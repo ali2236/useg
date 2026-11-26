@@ -3,6 +3,9 @@
 # Run as root from the checkout: sudo make install
 # Idempotent: the same command installs, updates and restarts.
 set -eu
+# Non-login root shells (su, some panels) drop the sbin dirs; useradd, nft,
+# dnsmasq, conntrack and sysctl all live there.
+export PATH="/usr/local/sbin:/usr/sbin:/sbin:$PATH"
 
 [ "$(id -u)" = 0 ] || { echo "run as root: sudo make install" >&2; exit 1; }
 cd "$(dirname "$0")/.."
