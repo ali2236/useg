@@ -132,7 +132,7 @@ Then:
 
 1. Turn the ISP router's DHCP **off**. This is the one unavoidable step; two
    DHCP servers on one segment is how this class of setup half-works.
-2. Open `http://<box-ip>/admin`, set the Jalali anchor and the pools (Period),
+2. Open `http://<box-ip>:8080/admin`, set the Jalali anchor and the pools (Period),
    then add people and routes.
 
 If your LAN is not a /24, edit `lan_cidr` in `/etc/useg/config.yaml` and run

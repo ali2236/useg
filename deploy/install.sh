@@ -179,6 +179,8 @@ fi
 BOX=$(cfg box_ip)
 ROUTER=$(cfg router_ip)
 BASE=$(cfg lan_cidr); BASE=${BASE%.*}
+ADMIN_PORT=$(cfg admin_listen); ADMIN_PORT=${ADMIN_PORT##*:}; ADMIN_PORT=${ADMIN_PORT:-8080}
+PORTAL_PORT=$(cfg portal_listen); PORTAL_PORT=${PORTAL_PORT##*:}; PORTAL_PORT=${PORTAL_PORT:-80}
 
 stop_service() { systemctl stop useg.service 2>/dev/null || true; }
 
@@ -229,12 +231,17 @@ if [ "$CONFIGURED" = 1 ]; then
   fi
   systemctl enable useg.service
   systemctl restart useg.service
+  sleep 2
+  if ! systemctl is-active --quiet useg.service; then
+    journalctl -u useg -n 20 --no-pager || true
+    die "useg exited on startup; the journal above says why"
+  fi
   systemctl enable --now useg-backup.timer
   cat <<EOF
 
 useg installed and running.
-  admin    http://$BOX/admin
-  portal   http://$BOX/
+  admin    http://$BOX:$ADMIN_PORT/admin
+  portal   http://$BOX:$PORTAL_PORT/
   status   systemctl status useg
   logs     journalctl -u useg -f
 
