@@ -204,9 +204,11 @@ sed \
   -e "s/192\.168\.1\.1/$ROUTER/g" \
   deploy/dnsmasq-useg.conf > /etc/dnsmasq.d/useg.conf
 
-# Fail here with dnsmasq's own message, not after a failed restart. A keyword
-# repeated from /etc/dnsmasq.conf (dhcp-leasefile was one) counts as an error.
-if ! testout=$(dnsmasq --test 2>&1); then
+# Fail here with dnsmasq's own message, not after a failed restart. Run it the
+# way the unit does: Debian's systemd-helper sources /etc/default/dnsmasq and
+# passes -7 $CONFIG_DIR plus $DNSMASQ_OPTS, which can change validity.
+if [ -r /etc/default/dnsmasq ]; then . /etc/default/dnsmasq; fi
+if ! testout=$(dnsmasq --test ${CONFIG_DIR:+-7 $CONFIG_DIR} ${DNSMASQ_OPTS:-} 2>&1); then
   printf '%s\n' "$testout" >&2
   die "dnsmasq rejects the generated /etc/dnsmasq.d/useg.conf"
 fi
