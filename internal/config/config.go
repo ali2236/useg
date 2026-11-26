@@ -28,7 +28,7 @@ type Config struct {
 	LeasesFile    string `yaml:"leases_file"`
 	Timezone      string `yaml:"timezone"`
 	PollMS        int    `yaml:"poll_ms"` // /connections poll; 250 ms, not 1 Hz
-	Enforce       bool   `yaml:"enforce"` // false on a dev Mac, true on the box
+	Enforce       bool   `yaml:"enforce"` // false on the dev rig, true on the box
 	Dev           bool   `yaml:"dev"`
 }
 

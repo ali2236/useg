@@ -9,7 +9,7 @@ routing contract.
 |---|---|
 | Version | 0.2 |
 | Date | 2026-11-26 |
-| Status | design, ready for P0 spike |
+| Status | implemented (v1); this document is the design |
 | Target host | Debian, Intel i5, 16 GB, single NIC |
 | Scale | 5 persons, ~25 devices, one household, one WAN link |
 
