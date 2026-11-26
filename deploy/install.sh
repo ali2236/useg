@@ -193,6 +193,10 @@ install -d -m 0755 /usr/local/share/useg
 
 id useg >/dev/null 2>&1 || useradd --system --no-create-home --shell /usr/sbin/nologin useg
 chown -R useg:useg /var/lib/useg
+# The unit runs as useg: it owns /var/lib/useg, and needs group read on the
+# config (still not world-readable).
+chown root:useg "$CONF"
+chmod 0640 "$CONF"
 
 install -d -m 0755 /etc/sysctl.d /etc/dnsmasq.d
 
