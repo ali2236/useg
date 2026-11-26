@@ -46,7 +46,7 @@ quota loop, portal, subscription endpoint, admin UI).
   is Linux-only (TPROXY, nftables, conntrack).
 - A single NIC and control of the LAN's DHCP — the ISP router's DHCP must go off.
 - root on the box. `make install` pulls in `nftables`, `dnsmasq`, `sqlite3`,
-  `conntrack`, `curl`, Go 1.23.6 and sing-box 1.14.4.
+  `conntrack`, `curl`, Go (apt, or 1.23.6 from a mirror) and sing-box 1.14.4.
 - For the dev rig: a Linux host with Docker and Compose.
 
 ## Not in v1
@@ -109,8 +109,9 @@ sudo make install
 `make install` does the whole first-run setup:
 
 - installs `nftables`, `dnsmasq`, `sqlite3`, `conntrack` and `curl` with apt;
-- installs Go 1.23.6 if the system has no Go or one older than that (Debian 12
-  ships 1.19), and the pinned sing-box 1.14.4 to `/usr/local/bin/sing-box`;
+- installs Go from Debian's own apt repo when it is new enough (trixie has 1.24)
+  and otherwise downloads 1.23.6 from a mirror, plus the pinned sing-box 1.14.4
+  to `/usr/local/bin/sing-box`;
 - builds `useg` and installs it, the systemd units, the backup timer and this
   README to `/usr/local/share/useg`;
 - asks for the box's LAN IP, the router IP and the admin password, writes
@@ -121,6 +122,11 @@ sudo make install
 
 Rerunning `sudo make install` is safe: it prompts nothing, keeps the config and
 the database, and restarts the service.
+
+Downloads are picked to work from Iran: apt uses the box's own Debian mirror, Go
+comes from apt on trixie (module downloads go through `goproxy.cn`/Aliyun, since
+`proxy.golang.org` and `go.dev` are Google), and sing-box comes from GitHub.
+Override them with `GOPROXY=...`, `GO_MIRROR=...` or `SB_URL=...`.
 
 Then:
 

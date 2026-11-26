@@ -1,5 +1,5 @@
 SHELL := /bin/bash
-HOSTARCH := $(shell go env GOARCH)
+HOSTARCH := $(shell go env GOARCH 2>/dev/null)
 
 .PHONY: test build install update dev dev-fresh down logs sh client-a a-curl b-curl probe redeploy
 

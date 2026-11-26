@@ -41,26 +41,42 @@ have_go() {
   [ "$(printf '%s\n%s\n' "$GO_VERSION" "$v" | sort -V | head -n1)" = "$GO_VERSION" ]
 }
 if ! have_go; then
-  echo "installing Go $GO_VERSION"
-  curl -fsSL -o /tmp/useg-go.tgz "https://go.dev/dl/go$GO_VERSION.linux-$ARCH.tar.gz" \
-    || die "could not download Go; install Go >= $GO_VERSION and rerun"
-  rm -rf /usr/local/go
-  tar -C /usr/local -xzf /tmp/useg-go.tgz
-  ln -sf /usr/local/go/bin/go /usr/local/bin/go
-  ln -sf /usr/local/go/bin/gofmt /usr/local/bin/gofmt
-  hash -r
+  # Debian 13's own repo already has 1.24, served by whatever (Iranian) apt
+  # mirror the box uses; only older releases fall through to the tarball.
+  echo "installing Go from apt"
+  apt-get update -qq || true
+  if ! DEBIAN_FRONTEND=noninteractive apt-get install -y golang-go >/dev/null \
+      || ! hash -r || ! have_go; then
+    echo "installing Go $GO_VERSION"
+    got=
+    # go.dev resolves to Google, unreachable from Iran; the mirror goes first.
+    for base in ${GO_MIRROR:-https://mirrors.aliyun.com/golang https://go.dev/dl}; do
+      if curl -fsSL -o /tmp/useg-go.tgz "$base/go$GO_VERSION.linux-$ARCH.tar.gz"; then
+        got=1
+        break
+      fi
+    done
+    [ -n "$got" ] || die "could not download Go; install Go >= $GO_VERSION and rerun"
+    rm -rf /usr/local/go
+    tar -C /usr/local -xzf /tmp/useg-go.tgz
+    ln -sf /usr/local/go/bin/go /usr/local/bin/go
+    ln -sf /usr/local/go/bin/gofmt /usr/local/bin/gofmt
+    hash -r
+  fi
 fi
 
 if [ ! -x /usr/local/bin/sing-box ]; then
   echo "installing sing-box $SB_VERSION"
   curl -fsSL -o /tmp/useg-sb.tgz \
-    "https://github.com/SagerNet/sing-box/releases/download/v$SB_VERSION/sing-box-$SB_VERSION-linux-$ARCH.tar.gz" \
+    "${SB_URL:-https://github.com/SagerNet/sing-box/releases/download/v$SB_VERSION/sing-box-$SB_VERSION-linux-$ARCH.tar.gz}" \
     || die "could not download sing-box; put the $SB_VERSION binary at /usr/local/bin/sing-box and rerun"
   tar -xzf /tmp/useg-sb.tgz -C /tmp
   install -m 0755 "/tmp/sing-box-$SB_VERSION-linux-$ARCH/sing-box" /usr/local/bin/sing-box
 fi
 
 echo "building"
+# proxy.golang.org is Google; a cold module cache needs a mirror Iran can reach.
+export GOPROXY=${GOPROXY:-https://goproxy.cn,https://mirrors.aliyun.com/goproxy/,direct}
 mkdir -p bin
 CGO_ENABLED=0 go build -trimpath -ldflags "-s -w" -o bin/useg ./cmd/useg
 
