@@ -13,6 +13,12 @@ CONF=/etc/useg/config.yaml
 
 die() { echo "install: $*" >&2; exit 1; }
 
+# Bounded: a filtered host must fail, not hang the install. -f so a 4xx/5xx
+# counts as a failure and the next mirror is tried.
+fetch() {
+  curl -fL --connect-timeout 10 --max-time 300 --retry 2 --retry-delay 2 -o "$1" "$2"
+}
+
 case $(uname -m) in
   x86_64)        ARCH=amd64 ;;
   aarch64|arm64) ARCH=arm64 ;;
@@ -27,6 +33,7 @@ command -v dnsmasq   >/dev/null || MISSING="$MISSING dnsmasq"
 command -v sqlite3   >/dev/null || MISSING="$MISSING sqlite3"
 command -v conntrack >/dev/null || MISSING="$MISSING conntrack"
 command -v curl      >/dev/null || MISSING="$MISSING curl"
+command -v useradd   >/dev/null || MISSING="$MISSING passwd"
 if [ -n "$MISSING" ]; then
   echo "installing:$MISSING"
   apt-get update -qq
@@ -51,7 +58,7 @@ if ! have_go; then
     got=
     # go.dev resolves to Google, unreachable from Iran; the mirror goes first.
     for base in ${GO_MIRROR:-https://mirrors.aliyun.com/golang https://go.dev/dl}; do
-      if curl -fsSL -o /tmp/useg-go.tgz "$base/go$GO_VERSION.linux-$ARCH.tar.gz"; then
+      if fetch /tmp/useg-go.tgz "$base/go$GO_VERSION.linux-$ARCH.tar.gz"; then
         got=1
         break
       fi
@@ -67,9 +74,16 @@ fi
 
 if [ ! -x /usr/local/bin/sing-box ]; then
   echo "installing sing-box $SB_VERSION"
-  curl -fsSL -o /tmp/useg-sb.tgz \
-    "${SB_URL:-https://github.com/SagerNet/sing-box/releases/download/v$SB_VERSION/sing-box-$SB_VERSION-linux-$ARCH.tar.gz}" \
-    || die "could not download sing-box; put the $SB_VERSION binary at /usr/local/bin/sing-box and rerun"
+  sb="https://github.com/SagerNet/sing-box/releases/download/v$SB_VERSION/sing-box-$SB_VERSION-linux-$ARCH.tar.gz"
+  got=
+  # GitHub stalls on some Iranian routes; the proxies serve the same asset.
+  for url in ${SB_URL:-$sb https://ghfast.top/$sb https://gh-proxy.com/$sb}; do
+    if fetch /tmp/useg-sb.tgz "$url"; then
+      got=1
+      break
+    fi
+  done
+  [ -n "$got" ] || die "could not download sing-box; put the $SB_VERSION binary at /usr/local/bin/sing-box and rerun"
   tar -xzf /tmp/useg-sb.tgz -C /tmp
   install -m 0755 "/tmp/sing-box-$SB_VERSION-linux-$ARCH/sing-box" /usr/local/bin/sing-box
 fi
