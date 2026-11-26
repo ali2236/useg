@@ -101,6 +101,7 @@ CGO_ENABLED=0 go build -trimpath -ldflags "-s -w" -o bin/useg ./cmd/useg
 
 mkdir -p /etc/useg
 cfg() { sed -n "s/^[[:space:]]*$1:[[:space:]]*//p" "$CONF" | head -n1 | tr -d "\"'"; }
+lan_ifaces() { ip -br link | awk '$1 != "lo" { print $1 }'; }
 
 CONFIGURED=1
 if [ ! -f "$CONF" ]; then
@@ -127,6 +128,11 @@ if [ ! -f "$CONF" ]; then
       ROUTER=$(ask "Router (ISP) IP" "$BASE.1")
     done
     [ "$ROUTER" != "$BOX" ] || die "router and box IP are the same"
+    IFACE=$(ask "LAN interface" "$(lan_ifaces | head -n1)")
+    until ip link show "$IFACE" >/dev/null 2>&1; do
+      echo "no such interface; have: $(lan_ifaces | tr '\n' ' ')"
+      IFACE=$(ask "LAN interface" "$(lan_ifaces | head -n1)")
+    done
     while :; do
       read -rsp "Admin password: " PW; echo
       [ -n "$PW" ] && [ "$PW" != change-me-before-first-boot ] && break
@@ -134,10 +140,11 @@ if [ ! -f "$CONF" ]; then
     done
     echo "LAN CIDR: $BASE.0/24 (change lan_cidr in $CONF for anything else)"
 
-    USEG_BOX=$BOX USEG_ROUTER=$ROUTER USEG_LAN=$BASE.0/24 USEG_PW=$PW \
+    USEG_BOX=$BOX USEG_ROUTER=$ROUTER USEG_LAN=$BASE.0/24 USEG_PW=$PW USEG_IFACE=$IFACE \
     awk '
       BEGIN { qc = sprintf("%c", 39) }
       function q(s) { gsub(qc, qc qc, s); return qc s qc }
+      /^iface:/         { print "iface: " ENVIRON["USEG_IFACE"]; next }
       /^lan_cidr:/      { print "lan_cidr: " ENVIRON["USEG_LAN"]; next }
       /^box_ip:/        { print "box_ip: " ENVIRON["USEG_BOX"]; next }
       /^router_ip:/     { print "router_ip: " ENVIRON["USEG_ROUTER"]; next }
@@ -156,6 +163,19 @@ fi
 # These two files are generated from the config so config.yaml stays the only
 # source of truth. Assumes a /24 LAN (x.y.z.0/24), same as the example.
 IFACE=$(cfg iface)
+IFACE=${IFACE:-eth0}
+if ! ip link show "$IFACE" >/dev/null 2>&1; then
+  CANDIDATES=$(lan_ifaces)
+  if [ "$(printf '%s\n' "$CANDIDATES" | grep -c .)" = 1 ]; then
+    echo "install: iface '$IFACE' does not exist; using the only NIC, $CANDIDATES"
+    IFACE=$CANDIDATES
+    sed "s/^iface:.*/iface: $IFACE/" "$CONF" > "$CONF.tmp"
+    chmod 0600 "$CONF.tmp"
+    mv "$CONF.tmp" "$CONF"
+  else
+    die "iface '$IFACE' does not exist (have: $(echo $CANDIDATES)); set iface: in $CONF and rerun"
+  fi
+fi
 BOX=$(cfg box_ip)
 ROUTER=$(cfg router_ip)
 BASE=$(cfg lan_cidr); BASE=${BASE%.*}
@@ -194,7 +214,10 @@ systemctl daemon-reload
 
 if [ "$CONFIGURED" = 1 ]; then
   systemctl enable dnsmasq.service
-  systemctl restart dnsmasq.service
+  if ! systemctl restart dnsmasq.service; then
+    journalctl -u dnsmasq -n 20 --no-pager || true
+    die "dnsmasq failed to start; check interface=$IFACE and the dhcp-range in /etc/dnsmasq.d/useg.conf"
+  fi
   systemctl enable useg.service
   systemctl restart useg.service
   systemctl enable --now useg-backup.timer
