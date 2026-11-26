@@ -1,0 +1,190 @@
+#!/bin/bash
+# Install or update useg on the gateway from a git checkout.
+# Run as root from the checkout: sudo make install
+# Idempotent: the same command installs, updates and restarts.
+set -eu
+
+[ "$(id -u)" = 0 ] || { echo "run as root: sudo make install" >&2; exit 1; }
+cd "$(dirname "$0")/.."
+
+GO_VERSION=1.23.6
+SB_VERSION=1.14.4
+CONF=/etc/useg/config.yaml
+
+die() { echo "install: $*" >&2; exit 1; }
+
+case $(uname -m) in
+  x86_64)        ARCH=amd64 ;;
+  aarch64|arm64) ARCH=arm64 ;;
+  *) die "unsupported machine $(uname -m)" ;;
+esac
+
+# ---- dependencies ------------------------------------------------------------
+
+MISSING=
+command -v nft       >/dev/null || MISSING="$MISSING nftables"
+command -v dnsmasq   >/dev/null || MISSING="$MISSING dnsmasq"
+command -v sqlite3   >/dev/null || MISSING="$MISSING sqlite3"
+command -v conntrack >/dev/null || MISSING="$MISSING conntrack"
+command -v curl      >/dev/null || MISSING="$MISSING curl"
+if [ -n "$MISSING" ]; then
+  echo "installing:$MISSING"
+  apt-get update -qq
+  DEBIAN_FRONTEND=noninteractive apt-get install -y $MISSING
+fi
+
+# Go >= 1.23.6, because go.mod asks for it and Debian 12 ships 1.19.
+have_go() {
+  command -v go >/dev/null || return 1
+  local v
+  v=$(go env GOVERSION 2>/dev/null | sed 's/^go//')
+  [ "$(printf '%s\n%s\n' "$GO_VERSION" "$v" | sort -V | head -n1)" = "$GO_VERSION" ]
+}
+if ! have_go; then
+  echo "installing Go $GO_VERSION"
+  curl -fsSL -o /tmp/useg-go.tgz "https://go.dev/dl/go$GO_VERSION.linux-$ARCH.tar.gz" \
+    || die "could not download Go; install Go >= $GO_VERSION and rerun"
+  rm -rf /usr/local/go
+  tar -C /usr/local -xzf /tmp/useg-go.tgz
+  ln -sf /usr/local/go/bin/go /usr/local/bin/go
+  ln -sf /usr/local/go/bin/gofmt /usr/local/bin/gofmt
+  hash -r
+fi
+
+if [ ! -x /usr/local/bin/sing-box ]; then
+  echo "installing sing-box $SB_VERSION"
+  curl -fsSL -o /tmp/useg-sb.tgz \
+    "https://github.com/SagerNet/sing-box/releases/download/v$SB_VERSION/sing-box-$SB_VERSION-linux-$ARCH.tar.gz" \
+    || die "could not download sing-box; put the $SB_VERSION binary at /usr/local/bin/sing-box and rerun"
+  tar -xzf /tmp/useg-sb.tgz -C /tmp
+  install -m 0755 "/tmp/sing-box-$SB_VERSION-linux-$ARCH/sing-box" /usr/local/bin/sing-box
+fi
+
+echo "building"
+mkdir -p bin
+CGO_ENABLED=0 go build -trimpath -ldflags "-s -w" -o bin/useg ./cmd/useg
+
+# ---- config ------------------------------------------------------------------
+
+mkdir -p /etc/useg
+cfg() { sed -n "s/^[[:space:]]*$1:[[:space:]]*//p" "$CONF" | head -n1 | tr -d "\"'"; }
+
+CONFIGURED=1
+if [ ! -f "$CONF" ]; then
+  if [ -t 0 ]; then
+    echo
+    echo "First install: the LAN facts and the admin password."
+    ask() { local a; read -rp "$1 [$2]: " a; echo "${a:-$2}"; }
+    valid_ip() {
+      [ -n "$1" ] || return 1
+      printf '%s' "$1" | awk -F. '
+        NF != 4 { exit 1 }
+        { for (i = 1; i <= 4; i++) if ($i !~ /^[0-9]+$/ || $i > 255) exit 1 }
+      '
+    }
+    BOX=$(ask "LAN IP for this box" 192.168.1.2)
+    until valid_ip "$BOX"; do
+      echo "not an IPv4 address"
+      BOX=$(ask "LAN IP for this box" 192.168.1.2)
+    done
+    BASE=${BOX%.*}
+    ROUTER=$(ask "Router (ISP) IP" "$BASE.1")
+    until valid_ip "$ROUTER"; do
+      echo "not an IPv4 address"
+      ROUTER=$(ask "Router (ISP) IP" "$BASE.1")
+    done
+    [ "$ROUTER" != "$BOX" ] || die "router and box IP are the same"
+    while :; do
+      read -rsp "Admin password: " PW; echo
+      [ -n "$PW" ] && [ "$PW" != change-me-before-first-boot ] && break
+      echo "password must be set and not the example value"
+    done
+    echo "LAN CIDR: $BASE.0/24 (change lan_cidr in $CONF for anything else)"
+
+    USEG_BOX=$BOX USEG_ROUTER=$ROUTER USEG_LAN=$BASE.0/24 USEG_PW=$PW \
+    awk '
+      BEGIN { qc = sprintf("%c", 39) }
+      function q(s) { gsub(qc, qc qc, s); return qc s qc }
+      /^lan_cidr:/      { print "lan_cidr: " ENVIRON["USEG_LAN"]; next }
+      /^box_ip:/        { print "box_ip: " ENVIRON["USEG_BOX"]; next }
+      /^router_ip:/     { print "router_ip: " ENVIRON["USEG_ROUTER"]; next }
+      /^admin_password:/{ print "admin_password: " q(ENVIRON["USEG_PW"]); next }
+      { print }
+    ' deploy/config.example.yaml > "$CONF"
+    chmod 0600 "$CONF"
+    echo "wrote $CONF"
+  else
+    install -m 0600 deploy/config.example.yaml "$CONF"
+    CONFIGURED=0
+    echo "no terminal: wrote the example config; edit $CONF and rerun 'sudo make install'"
+  fi
+fi
+
+# These two files are generated from the config so config.yaml stays the only
+# source of truth. Assumes a /24 LAN (x.y.z.0/24), same as the example.
+IFACE=$(cfg iface)
+BOX=$(cfg box_ip)
+ROUTER=$(cfg router_ip)
+BASE=$(cfg lan_cidr); BASE=${BASE%.*}
+
+stop_service() { systemctl stop useg.service 2>/dev/null || true; }
+
+# ---- install -----------------------------------------------------------------
+
+stop_service
+install -m 0755 bin/useg /usr/local/bin/useg
+install -d -m 0750 /var/lib/useg
+install -d -m 0755 /usr/local/share/useg
+
+id useg >/dev/null 2>&1 || useradd --system --no-create-home --shell /usr/sbin/nologin useg
+chown -R useg:useg /var/lib/useg
+
+install -d -m 0755 /etc/sysctl.d /etc/dnsmasq.d
+
+sed "s/eth0/$IFACE/g" deploy/sysctl-useg.conf > /etc/sysctl.d/90-useg.conf
+sysctl -q --system
+
+sed \
+  -e "s/^interface=.*/interface=$IFACE/" \
+  -e "s/^dhcp-range=.*/dhcp-range=$BASE.50,$BASE.240,12h/" \
+  -e "s/192\.168\.1\.2/$BOX/g" \
+  -e "s/192\.168\.1\.1/$ROUTER/g" \
+  deploy/dnsmasq-useg.conf > /etc/dnsmasq.d/useg.conf
+
+install -m 0644 deploy/useg.service /etc/systemd/system/useg.service
+install -m 0755 deploy/useg-backup.sh /usr/local/bin/useg-backup.sh
+install -m 0644 deploy/useg-backup.service /etc/systemd/system/useg-backup.service
+install -m 0644 deploy/useg-backup.timer /etc/systemd/system/useg-backup.timer
+install -m 0644 README.md /usr/local/share/useg/README.md
+
+systemctl daemon-reload
+
+if [ "$CONFIGURED" = 1 ]; then
+  systemctl enable dnsmasq.service
+  systemctl restart dnsmasq.service
+  systemctl enable useg.service
+  systemctl restart useg.service
+  systemctl enable --now useg-backup.timer
+  cat <<EOF
+
+useg installed and running.
+  admin    http://$BOX/admin
+  portal   http://$BOX/
+  status   systemctl status useg
+  logs     journalctl -u useg -f
+
+Before the household notices anything:
+  1. Turn the ISP router's DHCP server OFF. Two DHCP servers is the classic
+     way this setup half-works.
+  2. Open the admin UI and set the Jalali anchor and pools (Period), then add
+     people and routes.
+  3. If your LAN is not a /24, edit lan_cidr in $CONF and run sudo make update.
+
+Escape hatch: turn the router's DHCP back on and the box is out of the path.
+Maintenance bypass: the switch on the admin page (survives restarts).
+From a shell: nft delete table inet useg   (NAT stays in inet usegnat)
+Undo that:   systemctl restart useg
+EOF
+else
+  echo "useg NOT started. Edit $CONF, then: sudo systemctl enable --now useg"
+fi

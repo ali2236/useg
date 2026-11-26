@@ -1,0 +1,5 @@
+FROM docker.m.daocloud.io/library/alpine:3.20
+RUN apk add --no-cache curl iproute2 bind-tools bash conntrack-tools
+COPY dev/client-entrypoint.sh /usr/local/bin/client-entrypoint.sh
+RUN chmod +x /usr/local/bin/client-entrypoint.sh
+ENTRYPOINT ["/usr/local/bin/client-entrypoint.sh"]

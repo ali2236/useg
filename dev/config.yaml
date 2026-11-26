@@ -1,0 +1,20 @@
+# Dev config: the compose bridge, not your home LAN. The only fields that
+# change on the Debian box are lan_cidr, box_ip, router_ip and the ports.
+data_dir: /var/lib/useg
+db: /var/lib/useg/useg.db
+lan_cidr: 10.66.0.0/24
+box_ip: 10.66.0.2
+router_ip: 10.66.0.1
+iface: eth0
+portal_listen: ":8080"
+admin_listen: ":8081"
+admin_password: dev
+portal_port: 8080
+tproxy_port: 7895
+clash_url: http://127.0.0.1:9090
+singbox_bin: /usr/local/bin/sing-box
+singbox_config: /var/lib/useg/sing-box.json
+leases_file: /var/lib/misc/dnsmasq.leases
+timezone: Asia/Tehran
+enforce: true
+dev: true

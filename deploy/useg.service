@@ -1,0 +1,24 @@
+[Unit]
+Description=useg gateway (metering, quotas, portal, subscription)
+Documentation=file:/usr/local/share/useg/README.md
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+ExecStart=/usr/local/bin/useg server -c /etc/useg/config.yaml
+Restart=on-failure
+RestartSec=3s
+
+# The agent owns nftables, TPROXY, conntrack and the sing-box child process.
+# It needs NET_ADMIN for the rules and NET_BIND_SERVICE for the portal on :80.
+CapabilityBoundingSet=CAP_NET_ADMIN CAP_NET_RAW CAP_NET_BIND_SERVICE
+AmbientCapabilities=CAP_NET_ADMIN CAP_NET_RAW CAP_NET_BIND_SERVICE
+NoNewPrivileges=yes
+ProtectSystem=full
+ProtectHome=yes
+PrivateTmp=yes
+ReadWritePaths=/var/lib/useg
+
+[Install]
+WantedBy=multi-user.target

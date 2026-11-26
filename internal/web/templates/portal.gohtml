@@ -1,0 +1,60 @@
+<!doctype html>
+<html lang="{{.Lang}}" dir="{{.Dir}}">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>{{T .Lang "portal.title"}}</title>
+<link rel="stylesheet" href="/assets/app.css">
+</head>
+<body class="page">
+<main class="page-inner">
+  <header class="page-head"><h1>{{T .Lang "portal.title"}}</h1></header>
+
+  {{if .Blocked}}
+  <div class="alert alert-danger">
+    <strong>{{T .Lang "portal.blocked"}}</strong>
+    <p>{{.Reason}}</p>
+    <p class="muted small">{{T .Lang "portal.blocked_hint"}}</p>
+  </div>
+  {{end}}
+
+  {{if .Known}}
+  <section class="card">
+    <dl class="kv">
+      <dt>{{T .Lang "portal.device"}}</dt>
+      <dd>{{.DeviceName}}</dd>
+      <dt>{{T .Lang "portal.person"}}</dt>
+      <dd>{{if .Guest}}<span class="badge badge-neutral">{{T .Lang "portal.guest"}}</span>{{else}}{{.PersonName}}{{end}}</dd>
+    </dl>
+  </section>
+
+  <section class="section">
+    <h2>{{T .Lang "portal.remaining"}}</h2>
+    {{if .Unlimited}}
+      <p class="display">{{T .Lang "portal.unlimited"}}</p>
+      <p class="muted small">{{T .Lang "portal.used"}}: {{bytes .Used .Lang}}</p>
+    {{else}}
+      <p class="display num">{{bytes .Remaining .Lang}}</p>
+      <div class="progress" role="progressbar" aria-valuenow="{{.Pct}}" aria-valuemin="0" aria-valuemax="100"><div class="progress-fill{{if .Over}} is-danger{{end}}" style="width: {{.Pct}}%"></div></div>
+      <p class="muted small">{{T .Lang "portal.used"}} {{bytes .Used .Lang}} {{T .Lang "portal.of"}} {{bytes .Cap .Lang}}</p>
+    {{end}}
+  </section>
+
+  {{if .SubURL}}
+  <section class="section">
+    <h2>{{T .Lang "portal.sub"}}</h2>
+    <code class="code-block ltr">{{.SubURL}}</code>
+    <p class="muted small">{{T .Lang "portal.link_hint"}}</p>
+  </section>
+  {{end}}
+  {{else}}
+  <section class="card"><p class="m-0">{{T .Lang "portal.unknown"}}</p></section>
+  {{end}}
+
+  <footer class="page-foot muted small">
+    <p>{{T .Lang "portal.period_ends"}}: {{.PeriodEnd}}</p>
+    <p>{{T .Lang "portal.privacy"}}</p>
+  </footer>
+</main>
+</body>
+</html>

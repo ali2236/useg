@@ -1,0 +1,641 @@
+<!doctype html>
+<html lang="{{.Lang}}" dir="{{.Dir}}">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>useg admin</title>
+<link rel="stylesheet" href="/assets/app.css">
+</head>
+<body>
+{{$l := .Lang}}
+<div class="shell">
+<aside class="side">
+  <div class="brand">
+    <a href="/admin">useg</a>
+    <span class="muted small">{{T $l "admin.period"}} <span class="ltr">{{.PeriodStart}} – {{.PeriodEnd}}</span></span>
+    {{if .Bypass}}<span class="badge badge-danger">{{T $l "admin.bypass_on"}}</span>{{else}}<span class="badge badge-neutral">{{T $l "admin.metering"}}</span>{{end}}
+    {{if .CapsOff}}<span class="badge badge-info">{{T $l "caps.badge"}}</span>{{end}}
+  </div>
+  <nav class="nav" role="tablist" aria-orientation="vertical">
+    <button class="nav-link is-active" id="tab-dashboard" data-tab="dashboard" type="button" role="tab" aria-controls="dashboard" aria-selected="true">{{T $l "nav.dashboard"}}</button>
+    <button class="nav-link" id="tab-data" data-tab="data" type="button" role="tab" aria-controls="data" aria-selected="false">{{T $l "nav.data"}}</button>
+    <button class="nav-link" id="tab-persons" data-tab="persons" type="button" role="tab" aria-controls="persons" aria-selected="false">{{T $l "nav.persons"}}</button>
+    <button class="nav-link" id="tab-devices" data-tab="devices" type="button" role="tab" aria-controls="devices" aria-selected="false">{{T $l "nav.devices"}}</button>
+    <button class="nav-link" id="tab-domestic" data-tab="domestic" type="button" role="tab" aria-controls="domestic" aria-selected="false">{{T $l "nav.domestic"}}</button>
+    <button class="nav-link" id="tab-routes" data-tab="routes" type="button" role="tab" aria-controls="routes" aria-selected="false">{{T $l "nav.routes"}}</button>
+    <button class="nav-link" id="tab-usage" data-tab="usage" type="button" role="tab" aria-controls="usage" aria-selected="false">{{T $l "nav.usage"}}</button>
+    <button class="nav-link" id="tab-audit" data-tab="audit" type="button" role="tab" aria-controls="audit" aria-selected="false">{{T $l "nav.audit"}}</button>
+    <button class="nav-link" id="tab-machine" data-tab="machine" type="button" role="tab" aria-controls="machine" aria-selected="false">{{T $l "nav.machine"}}</button>
+  </nav>
+  <div class="side-foot">
+    <a href="?lang=fa">فارسی</a>
+    <a href="?lang=en">EN</a>
+    <a href="/admin/api/summary">API</a>
+    <a href="/admin/logout">{{T $l "nav.logout"}}</a>
+  </div>
+</aside>
+<main class="main">
+  {{if .Flash}}<div class="alert alert-success">{{T $l .Flash}}</div>{{end}}
+  {{if .Error}}<div class="alert alert-danger">{{.Error}}</div>{{end}}
+
+  {{if .Bypass}}
+  <div class="alert alert-danger row" style="justify-content:space-between"><span><strong>{{T $l "bypass.title"}}</strong> {{T $l "bypass.body"}}</span>
+    <form method="post" action="/admin/bypass"><input type="hidden" name="on" value="0"><button class="btn btn-sm btn-danger">{{T $l "bypass.restore"}}</button></form>
+  </div>
+  {{end}}
+
+  <section class="panel is-active" id="dashboard" role="tabpanel" aria-labelledby="tab-dashboard" tabindex="0">
+  <div class="stack">
+    <div class="page-head">
+      <h2>{{T $l "nav.dashboard"}}</h2>
+      <span class="muted small">{{T $l "admin.period"}} <span class="ltr">{{.PeriodStart}} – {{.PeriodEnd}}</span></span>
+    </div>
+
+    <div class="grid grid-4">
+      <div class="card stat">
+        <div class="stat-label">{{T $l "household.charged_pool"}}</div>
+        <div class="stat-value num">{{bytes .Charged $l}}</div>
+        <div class="stat-sub">{{T $l "household.of"}} {{if .PoolSet}}{{bytes .Pool $l}}{{else}}{{T $l "household.unmetered"}}{{end}}</div>
+        <div class="progress" role="progressbar" aria-valuenow="{{.PoolPct}}" aria-valuemin="0" aria-valuemax="100"><div class="progress-fill{{if .Over}} is-danger{{end}}" style="width: {{.PoolPct}}%"></div></div>
+      </div>
+      <div class="card stat" title="{{T $l "household.ledger_note"}}">
+        <div class="stat-label">{{T $l "household.raw"}}</div>
+        <div class="stat-value num">{{bytes .RawUsed $l}}</div>
+        <div class="stat-sub">{{T $l "household.ceiling"}} {{if .RawCeilingSet}}{{bytes .RawCeiling $l}}{{else}}{{T $l "household.not_set"}}{{end}}</div>
+        <div class="stat-sub">{{if .DriftAvailable}}{{T $l "household.drift"}} <span class="num ltr">{{printf "%+.1f%%" .DriftPct}}</span>{{else}}{{T $l "household.drift_unavail"}}{{end}}</div>
+      </div>
+      <div class="card stat">
+        <div class="stat-label">{{T $l "household.guest_pool"}}</div>
+        <div class="stat-value num">{{bytes .GuestUsed $l}}</div>
+        <div class="stat-sub">{{T $l "household.of"}} {{bytes .GuestPool $l}}</div>
+        <div class="progress" role="progressbar" aria-valuenow="{{pct .GuestUsed .GuestPool}}" aria-valuemin="0" aria-valuemax="100"><div class="progress-fill" style="width: {{pct .GuestUsed .GuestPool}}%"></div></div>
+      </div>
+      <div class="card stat">
+        <div class="stat-label">{{T $l "household.counts"}}</div>
+        <div class="stat-value num">{{.DeviceCount}} <span class="stat-unit">/ {{.PersonCount}}</span></div>
+        <div class="stat-sub">{{T $l "dash.connected"}} {{len .Connected}} · {{T $l "dash.guests"}} {{len .Guests}}</div>
+        <div class="stat-sub">{{.BlockedCount}} {{T $l "household.blocked_now"}}</div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-head">
+        <strong>{{T $l "dash.people"}}</strong>
+        <span class="muted small">{{T $l "dash.people_hint"}}</span>
+      </div>
+      {{if .Persons}}
+      <div class="list">
+        <div class="list-row list-head">
+          <span>{{T $l "th.name"}}</span><span>{{T $l "th.used"}}</span><span>{{T $l "th.remaining"}}</span><span>{{T $l "th.state"}}</span>
+        </div>
+        {{range .Persons}}
+        <div class="list-row{{if .Status.Blocked}} is-blocked{{end}}">
+          <div class="list-name">
+            <strong>{{.P.Name}}</strong>
+            <span class="muted small">{{T $l "dash.devices"}} {{.Devices}}{{if eq .Status.Cap -1}} · {{T $l "household.unmetered"}}{{end}}</span>
+          </div>
+          <div>
+            <div class="small num">{{bytes .Used $l}} {{T $l "household.of"}} {{if ge .Status.Cap 0}}{{bytes .Status.Cap $l}}{{else}}∞{{end}}</div>
+            {{if ge .Status.Cap 0}}<div class="progress" role="progressbar" aria-valuenow="{{.Pct}}" aria-valuemin="0" aria-valuemax="100"><div class="progress-fill{{if ge .Used .Status.Cap}} is-danger{{end}}" style="width: {{.Pct}}%"></div></div>{{end}}
+          </div>
+          <div class="small num">{{if ge .Status.Cap 0}}{{bytes .Remaining $l}}{{else}}—{{end}}</div>
+          <div>{{if .Status.Blocked}}<span class="badge badge-danger">{{reason $l .Status.Reason}}</span>{{else}}<span class="badge badge-neutral">{{T $l "devices.ok"}}</span>{{end}}</div>
+        </div>
+        {{end}}
+      </div>
+      {{else}}<p class="muted small m-0">{{T $l "dash.none"}}</p>{{end}}
+    </div>
+
+    <div class="grid grid-2">
+      <div class="card">
+        <div class="card-head">
+          <strong>{{T $l "dash.connected"}}</strong>
+          <span class="badge badge-neutral num">{{len .Connected}}</span>
+        </div>
+        {{if .Connected}}
+        <div class="list">
+        {{range .Connected}}
+          <div class="list-row list-row--dev">
+            <div class="list-name">
+              <strong>{{if .D.Hostname}}{{.D.Hostname}}{{else}}{{.D.MAC}}{{end}}</strong>
+              <span class="muted small">{{.OwnerName}}{{if .D.IP}} · <span class="ltr num">{{.D.IP}}</span>{{end}}</span>
+            </div>
+            <div class="num small">{{bytes .Used $l}}</div>
+            <div>{{if .BlockReason}}<span class="badge badge-danger">{{reason $l .BlockReason}}</span>{{else}}<span class="muted small num">{{.LastSeen}}</span>{{end}}</div>
+          </div>
+        {{end}}
+        </div>
+        {{else}}<p class="muted small m-0">{{T $l "dash.none"}}</p>{{end}}
+      </div>
+
+      <div class="card">
+        <div class="card-head">
+          <strong>{{T $l "dash.guests"}}</strong>
+          <span class="muted small">{{T $l "dash.guest_pool"}} <span class="num">{{bytes .GuestUsed $l}} / {{bytes .GuestPool $l}}</span></span>
+        </div>
+        {{if .Guests}}
+        <div class="list">
+        {{range .Guests}}
+          <div class="list-row list-row--dev{{if .BlockReason}} is-blocked{{end}}">
+            <div class="list-name">
+              <strong>{{if .D.Hostname}}{{.D.Hostname}}{{else}}{{.D.MAC}}{{end}}</strong>
+              <span class="muted small">{{if .D.IP}}<span class="ltr num">{{.D.IP}}</span>{{end}}{{if .LastSeen}}{{if .D.IP}} · {{end}}{{.LastSeen}}{{end}}</span>
+              {{if gt .GuestCap 0}}<div class="progress" role="progressbar" aria-valuenow="{{.GuestPct}}" aria-valuemin="0" aria-valuemax="100"><div class="progress-fill{{if ge .Used .GuestCap}} is-danger{{end}}" style="width: {{.GuestPct}}%"></div></div>{{end}}
+            </div>
+            <div class="num small">{{if gt .GuestCap 0}}{{bytes .Used $l}} / {{bytes .GuestCap $l}}{{else}}{{bytes .Used $l}}{{end}}</div>
+            <div>{{if .BlockReason}}<span class="badge badge-danger">{{reason $l .BlockReason}}</span>{{else}}<span class="badge badge-neutral">{{T $l "devices.ok"}}</span>{{end}}</div>
+          </div>
+        {{end}}
+        </div>
+        {{else}}<p class="muted small m-0">{{T $l "dash.none"}}</p>{{end}}
+      </div>
+    </div>
+
+    <form method="post" action="/admin/caps" class="card row" style="justify-content:space-between">
+      <div style="flex:1 1 240px">
+        <strong>{{T $l "caps.title"}}</strong>
+        <div class="muted small">{{T $l "caps.hint"}}</div>
+      </div>
+      <label class="switch">
+        <input type="checkbox" role="switch" name="off" value="1" {{if .CapsOff}}checked{{end}}>
+        <span>{{T $l "caps.toggle"}}</span>
+      </label>
+      <button class="btn btn-sm btn-secondary">{{T $l "caps.save"}}</button>
+    </form>
+    {{if .CapsOff}}<div class="alert alert-info">{{T $l "caps.off"}}</div>{{end}}
+  </div>
+  </section>
+
+  <section class="panel" id="data" role="tabpanel" aria-labelledby="tab-data" tabindex="0" hidden>
+  <div class="stack">
+    <div class="page-head">
+      <h2>{{T $l "data.title"}}</h2>
+      <span class="muted small">{{T $l "admin.period"}} <span class="ltr">{{.PeriodStart}} – {{.PeriodEnd}}</span>{{if .Manual}} · {{digits .CycleLength $l}} {{T $l (printf "data.unit.%s" .CycleUnit)}}{{end}}</span>
+    </div>
+
+    <form method="post" action="/admin/data/settings" class="card stack">
+      <div>
+        <strong>{{T $l "data.settings"}}</strong>
+        <div class="muted small">{{T $l "data.settings_hint"}}</div>
+      </div>
+      <div class="row">
+        {{if not .Manual}}
+        <label class="field"><span class="field-label">{{T $l "period.pool"}}</span><input class="input input-sm" name="pool_charged_gb" value="{{.PoolGB}}" placeholder="{{T $l "period.pool_ph"}}" style="width:130px"></label>
+        <label class="field"><span class="field-label">{{T $l "period.guest_pool"}}</span><input class="input input-sm" name="guest_pool_gb" value="{{.GuestPoolGB}}" style="width:110px"></label>
+        {{end}}
+        <label class="field"><span class="field-label">{{T $l "period.guest_device"}}</span><input class="input input-sm" name="guest_device_gb" value="{{.GuestDeviceGB}}" style="width:110px"></label>
+        <button class="btn btn-sm btn-primary">{{T $l "caps.save"}}</button>
+      </div>
+    </form>
+
+    {{if .Manual}}
+    <div class="grid grid-4">
+      <div class="card stat">
+        <div class="stat-label">{{T $l "data.pool"}}</div>
+        <div class="stat-value num">{{bytes .Pool $l}}</div>
+        <div class="stat-sub">{{T $l "data.pool_hint"}}</div>
+      </div>
+      <div class="card stat">
+        <div class="stat-label">{{T $l "data.allocated"}}</div>
+        <div class="stat-value num">{{bytes .DataAllocated $l}}</div>
+        <div class="stat-sub">{{T $l "data.people"}} {{bytes .PersonAllocated $l}} · {{T $l "data.guests"}} {{bytes .DataGuest $l}}</div>
+      </div>
+      <div class="card stat">
+        <div class="stat-label">{{T $l "data.unallocated"}}</div>
+        <div class="stat-value num">{{bytes .DataUnallocated $l}}</div>
+        {{if lt .DataUnallocated 0}}
+        <div class="stat-sub"><span class="badge badge-danger">{{T $l "data.over"}}</span></div>
+        {{else}}
+        <div class="stat-sub">{{T $l "data.unallocated_hint"}}</div>
+        {{end}}
+      </div>
+      <div class="card stat">
+        <div class="stat-label">{{T $l "data.used"}}</div>
+        <div class="stat-value num">{{bytes .Charged $l}}</div>
+        <div class="stat-sub">{{T $l "household.of"}} {{bytes .Pool $l}}</div>
+      </div>
+    </div>
+    {{if eq .DataAllocated 0}}<div class="alert alert-info">{{T $l "data.nothing_allocated"}}</div>{{end}}
+    <div class="grid grid-2" id="data-charts">
+      <div class="card">
+        <div class="card-head">
+          <strong>{{T $l "people.alloc_title"}}</strong>
+          <span class="muted small">{{T $l "people.alloc_hint"}}</span>
+        </div>
+        <div class="chart">
+          {{range .Persons}}{{if gt .DataAllocPct 0}}<div class="chart-seg" style="width: {{.DataAllocPct}}%" title="{{.P.Name}} · {{bytes .Allocated $l}}"></div>{{end}}{{end}}
+          {{if gt .DataGuestAllocPct 0}}<div class="chart-seg" style="width: {{.DataGuestAllocPct}}%" title="{{T $l "data.guests"}} · {{bytes .DataGuest $l}}"></div>{{end}}
+          {{if gt .DataUnallocPct 0}}<div class="chart-seg is-rest" style="width: {{.DataUnallocPct}}%" title="{{T $l "people.unallocated"}} · {{bytes .DataUnallocated $l}}"></div>{{end}}
+        </div>
+        <div class="legend">
+          {{range .Persons}}{{if gt .DataAllocPct 0}}<span class="legend-item"><span class="legend-swatch"></span>{{.P.Name}} <span class="muted num">{{bytes .Allocated $l}}</span></span>{{end}}{{end}}
+          {{if gt .DataGuestAllocPct 0}}<span class="legend-item"><span class="legend-swatch"></span>{{T $l "data.guests"}} <span class="muted num">{{bytes .DataGuest $l}}</span></span>{{end}}
+          {{if gt .DataUnallocPct 0}}<span class="legend-item is-rest"><span class="legend-swatch"></span>{{T $l "people.unallocated"}} <span class="muted num">{{bytes .DataUnallocated $l}}</span></span>{{end}}
+        </div>
+      </div>
+      <div class="card">
+        <div class="card-head">
+          <strong>{{T $l "people.usage_title"}}</strong>
+          <span class="muted small">{{T $l "people.usage_hint"}}</span>
+        </div>
+        <div class="chart">
+          {{range .Persons}}{{if gt .DataUsedPct 0}}<div class="chart-seg" style="width: {{.DataUsedPct}}%" title="{{.P.Name}} · {{bytes .Used $l}}"></div>{{end}}{{end}}
+          {{if gt .DataGuestUsedPct 0}}<div class="chart-seg" style="width: {{.DataGuestUsedPct}}%" title="{{T $l "data.guests"}} · {{bytes .GuestUsed $l}}"></div>{{end}}
+          {{if gt .DataUnusedPct 0}}<div class="chart-seg is-rest" style="width: {{.DataUnusedPct}}%" title="{{T $l "people.unused"}} · {{bytes .DataUnused $l}}"></div>{{end}}
+        </div>
+        <div class="legend">
+          {{range .Persons}}{{if gt .DataUsedPct 0}}<span class="legend-item"><span class="legend-swatch"></span>{{.P.Name}} <span class="muted num">{{bytes .Used $l}}</span></span>{{end}}{{end}}
+          {{if gt .DataGuestUsedPct 0}}<span class="legend-item"><span class="legend-swatch"></span>{{T $l "data.guests"}} <span class="muted num">{{bytes .GuestUsed $l}}</span></span>{{end}}
+          {{if gt .DataUnusedPct 0}}<span class="legend-item is-rest"><span class="legend-swatch"></span>{{T $l "people.unused"}} <span class="muted num">{{bytes .DataUnused $l}}</span></span>{{end}}
+        </div>
+      </div>
+    </div>
+    {{else}}
+    <div class="alert alert-info">{{T $l "data.monthly_hint"}}</div>
+    {{end}}
+
+    <form method="post" action="/admin/data/reset" class="card stack">
+      <div>
+        <strong>{{T $l "data.reset"}}</strong>
+        <div class="muted small">{{T $l "data.reset_hint"}}</div>
+      </div>
+      <div class="row">
+        <label class="field"><span class="field-label">{{T $l "data.length"}}</span>
+          <input class="input input-sm" type="number" min="1" name="length" value="{{.CycleLength}}" style="width:90px" required>
+        </label>
+        <label class="field"><span class="field-label">{{T $l "data.unit"}}</span>
+          <select class="select input-sm" name="unit">
+            <option value="days" {{if eq .CycleUnit "days"}}selected{{end}}>{{T $l "data.unit.days"}}</option>
+            <option value="months" {{if eq .CycleUnit "months"}}selected{{end}}>{{T $l "data.unit.months"}}</option>
+          </select>
+        </label>
+        <label class="field"><span class="field-label">{{T $l "data.data"}}</span>
+          <input class="input input-sm" type="number" step="0.01" min="0.01" name="gb" value="{{.DataPoolGB}}" style="width:110px" required>
+        </label>
+        <button class="btn btn-sm btn-primary">{{T $l "data.reset_btn"}}</button>
+      </div>
+      <p class="muted small m-0">{{T $l "data.reset_warn"}}</p>
+    </form>
+
+    {{if .Manual}}
+    <form method="post" action="/admin/data/add" class="card row" style="justify-content:space-between">
+      <div style="flex:1 1 240px">
+        <strong>{{T $l "data.add"}}</strong>
+        <div class="muted small">{{T $l "data.add_hint"}}</div>
+      </div>
+      <input class="input input-sm" type="number" step="0.01" min="0.01" name="gb" placeholder="GB" aria-label="{{T $l "data.data"}}" style="width:110px" required>
+      <button class="btn btn-sm btn-secondary">{{T $l "data.add_btn"}}</button>
+    </form>
+
+    <form method="post" action="/admin/data/allocate-equal" class="card row" style="justify-content:space-between">
+      <div style="flex:1 1 240px">
+        <strong>{{T $l "data.equal"}}</strong>
+        <div class="muted small">{{T $l "data.equal_hint"}}</div>
+      </div>
+      <button class="btn btn-sm btn-secondary">{{T $l "data.equal_btn"}}</button>
+    </form>
+
+    <form method="post" action="/admin/data/allocate-weight" class="card stack">
+      <div>
+        <strong>{{T $l "data.weight"}}</strong>
+        <div class="muted small">{{T $l "data.weight_hint"}}</div>
+        <div class="muted small">{{T $l "data.grant_hint"}}</div>
+      </div>
+      <div class="table-wrap">
+      <table class="table">
+        <thead><tr><th scope="col">{{T $l "th.name"}}</th><th scope="col">{{T $l "data.allocated"}}</th><th scope="col">{{T $l "th.used"}}</th><th scope="col">{{T $l "th.remaining"}}</th><th scope="col">{{T $l "data.weight_col"}}</th><th scope="col">{{T $l "data.grant_col"}}</th></tr></thead>
+        <tbody>
+        {{range .Persons}}
+        <tr>
+          <td>{{.P.Name}}</td>
+          <td class="num">{{bytes .Allocated $l}}</td>
+          <td class="num">{{bytes .Used $l}}</td>
+          <td class="num">{{if lt .Status.Cap 0}}∞{{else}}{{bytes .Remaining $l}}{{end}}</td>
+          <td><input class="input input-sm" type="number" step="0.01" min="0" name="weight_{{.P.ID}}" value="0" aria-label="{{T $l "data.weight_col"}} {{.P.Name}}" style="width:80px"></td>
+          <td><input class="input input-sm" type="number" step="0.01" min="0" name="grant_{{.P.ID}}" placeholder="GB" aria-label="{{T $l "data.grant_col"}} {{.P.Name}}" style="width:90px"></td>
+        </tr>
+        {{end}}
+        <tr>
+          <td><strong>{{T $l "data.guests"}}</strong></td>
+          <td class="num">{{bytes .DataGuest $l}}</td>
+          <td class="num">{{bytes .GuestUsed $l}}</td>
+          <td class="num">{{bytes .GuestRemaining $l}}</td>
+          <td><input class="input input-sm" type="number" step="0.01" min="0" name="weight_guest" value="0" aria-label="{{T $l "data.weight_col"}} {{T $l "data.guests"}}" style="width:80px"></td>
+          <td><input class="input input-sm" type="number" step="0.01" min="0" name="grant_guest" placeholder="GB" aria-label="{{T $l "data.grant_col"}} {{T $l "data.guests"}}" style="width:90px"></td>
+        </tr>
+        </tbody>
+      </table>
+      </div>
+      <div class="row">
+        <button class="btn btn-sm btn-primary">{{T $l "data.weight_btn"}}</button>
+        <button class="btn btn-sm btn-secondary" formaction="/admin/data/grant">{{T $l "data.grant_btn"}}</button>
+      </div>
+    </form>
+    {{end}}
+  </div>
+  </section>
+
+  <section class="panel" id="persons" role="tabpanel" aria-labelledby="tab-persons" tabindex="0" hidden>
+  <div class="page-head"><h2>{{T $l "persons.title"}}</h2></div>
+  <div class="stack">
+  <div class="grid grid-3">
+    <div class="card stat">
+      <div class="stat-label">{{T $l "people.total"}}</div>
+      <div class="stat-value num">{{if .PoolSet}}{{bytes .Pool $l}}{{else}}{{T $l "household.unmetered"}}{{end}}</div>
+      <div class="stat-sub">{{T $l "admin.period"}} <span class="ltr">{{.PeriodStart}} – {{.PeriodEnd}}</span></div>
+    </div>
+    <div class="card stat">
+      <div class="stat-label">{{T $l "th.used"}}</div>
+      <div class="stat-value num">{{bytes .Charged $l}}</div>
+      {{if .PoolSet}}
+      <div class="progress" role="progressbar" aria-valuenow="{{.PoolPct}}" aria-valuemin="0" aria-valuemax="100"><div class="progress-fill{{if .Over}} is-danger{{end}}" style="width: {{.PoolPct}}%"></div></div>
+      <div class="stat-sub">{{T $l "household.of"}} {{bytes .Pool $l}}</div>
+      {{end}}
+    </div>
+    <div class="card stat">
+      <div class="stat-label">{{T $l "people.days_left"}}</div>
+      <div class="stat-value num">{{digits .CycleDaysLeft $l}}</div>
+      <div class="stat-sub">{{T $l "portal.period_ends"}} <span class="ltr">{{.PeriodEnd}}</span></div>
+    </div>
+  </div>
+
+  {{if .PoolSet}}
+  <div class="grid grid-2">
+    <div class="card">
+      <div class="card-head">
+        <strong>{{T $l "people.alloc_title"}}</strong>
+        <span class="muted small">{{T $l "people.alloc_hint"}}</span>
+      </div>
+      <div class="chart">
+        {{range .Persons}}{{if gt .AllocPct 0}}<div class="chart-seg" style="width: {{.AllocPct}}%" title="{{.P.Name}} · {{bytes .Cap $l}}"></div>{{end}}{{end}}
+        {{if gt .GuestAllocPct 0}}<div class="chart-seg" style="width: {{.GuestAllocPct}}%" title="{{T $l "data.guests"}} · {{bytes .GuestPool $l}}"></div>{{end}}
+        {{if gt .UnallocPct 0}}<div class="chart-seg is-rest" style="width: {{.UnallocPct}}%" title="{{T $l "people.unallocated"}} · {{bytes .Unallocated $l}}"></div>{{end}}
+      </div>
+      <div class="legend">
+        {{range .Persons}}{{if gt .AllocPct 0}}<span class="legend-item"><span class="legend-swatch"></span>{{.P.Name}} <span class="muted num">{{bytes .Cap $l}}</span></span>{{end}}{{end}}
+        {{if gt .GuestAllocPct 0}}<span class="legend-item"><span class="legend-swatch"></span>{{T $l "data.guests"}} <span class="muted num">{{bytes .GuestPool $l}}</span></span>{{end}}
+        {{if gt .UnallocPct 0}}<span class="legend-item is-rest"><span class="legend-swatch"></span>{{T $l "people.unallocated"}} <span class="muted num">{{bytes .Unallocated $l}}</span></span>{{end}}
+      </div>
+    </div>
+    <div class="card">
+      <div class="card-head">
+        <strong>{{T $l "people.usage_title"}}</strong>
+        <span class="muted small">{{T $l "people.usage_hint"}}</span>
+      </div>
+      <div class="chart">
+        {{range .Persons}}{{if gt .UsedPct 0}}<div class="chart-seg" style="width: {{.UsedPct}}%" title="{{.P.Name}} · {{bytes .Used $l}}"></div>{{end}}{{end}}
+        {{if gt .UnusedPct 0}}<div class="chart-seg is-rest" style="width: {{.UnusedPct}}%" title="{{T $l "people.unused"}} · {{bytes .Unused $l}}"></div>{{end}}
+      </div>
+      <div class="legend">
+        {{range .Persons}}{{if gt .UsedPct 0}}<span class="legend-item"><span class="legend-swatch"></span>{{.P.Name}} <span class="muted num">{{bytes .Used $l}}</span></span>{{end}}{{end}}
+        {{if gt .UnusedPct 0}}<span class="legend-item is-rest"><span class="legend-swatch"></span>{{T $l "people.unused"}} <span class="muted num">{{bytes .Unused $l}}</span></span>{{end}}
+      </div>
+    </div>
+  </div>
+  {{else}}
+  <div class="alert alert-info">{{T $l "people.pool_unset"}}</div>
+  {{end}}
+
+  <div class="card table-wrap">
+  <table class="table">
+    <thead><tr><th scope="col">{{T $l "th.name"}}</th><th scope="col">{{T $l "th.usage"}}</th><th scope="col">{{T $l "th.subscription"}}</th></tr></thead>
+    <tbody>
+    {{range .Persons}}
+    <tr{{if .Status.Blocked}} class="is-blocked"{{end}}>
+      <td>{{.P.Name}}{{if .Status.Blocked}} <span class="badge badge-danger">{{reason $l .Status.Reason}}</span>{{end}}</td>
+      <td style="min-width:140px">
+        {{if lt .Status.Cap 0}}
+        <div class="progress progress-lg" role="button" tabindex="0" title="{{T $l "th.cap"}} ∞ · {{T $l "th.used"}} {{bytes .Status.Used $l}}">
+          <div class="progress-fill is-neutral" style="width:100%"></div>
+        </div>
+        {{else}}
+        <div class="progress progress-lg" role="button" tabindex="0" title="{{T $l "th.cap"}} {{bytes .Status.Cap $l}} · {{T $l "th.used"}} {{bytes .Status.Used $l}} · {{T $l "th.remaining"}} {{bytes .Remaining $l}}">
+          <div class="progress-fill{{if .Status.Blocked}} is-danger{{end}}" style="width: {{pct .Status.Used .Status.Cap}}%"></div>
+        </div>
+        {{end}}
+      </td>
+      <td><a href="{{.SubURL}}">{{T $l "persons.sub"}}</a></td>
+    </tr>
+    {{end}}
+    <tr>
+      <td colspan="3">
+        <form method="post" action="/admin/person/new" class="row">
+          <input class="input input-sm" name="name" placeholder="{{T $l "persons.new_ph"}}" style="min-width:180px" required>
+          <button class="btn btn-sm btn-primary">{{T $l "persons.add"}}</button>
+        </form>
+      </td>
+    </tr>
+    </tbody>
+  </table>
+  </div>
+  </div>
+  </section>
+
+  <section class="panel" id="devices" role="tabpanel" aria-labelledby="tab-devices" tabindex="0" hidden>
+  <div class="page-head"><h2>{{T $l "devices.title"}}</h2></div>
+  <div class="card table-wrap">
+  <table class="table">
+    <thead><tr><th scope="col">{{T $l "th.device"}}</th><th scope="col">{{T $l "th.ip"}}</th><th scope="col">{{T $l "th.owner"}}</th><th scope="col">{{T $l "th.usage"}}</th><th scope="col">{{T $l "th.state"}}</th><th scope="col">{{T $l "th.last_seen"}}</th></tr></thead>
+    <tbody>
+    {{range .Devices}}
+    <tr{{if .BlockReason}} class="is-blocked"{{end}}>
+      <td>{{.D.Hostname}}<div class="muted small">{{.D.MAC}}{{if .D.BindSource}} · {{.D.BindSource}}{{end}}</div></td>
+      <td class="num">{{.D.IP}}</td>
+      <td>
+        <form method="post" action="/admin/device" class="row">
+          <input type="hidden" name="mac" value="{{.D.MAC}}">
+          <select class="select input-sm" name="person">
+            <option value="0">{{T $l "devices.guest"}}</option>
+            {{range $.Persons}}<option value="{{.P.ID}}">{{.P.Name}}</option>{{end}}
+          </select>
+          <button class="btn btn-sm btn-secondary" name="action" value="bind">{{T $l "devices.bind"}}</button>
+          <button class="btn btn-sm btn-secondary" name="action" value="unbind">{{T $l "devices.unbind"}}</button>
+          {{if .BlockReason}}<button class="btn btn-sm btn-secondary" name="action" value="unblock">{{T $l "devices.unblock"}}</button>{{else}}<button class="btn btn-sm btn-danger" name="action" value="block">{{T $l "devices.block"}}</button>{{end}}
+        </form>
+      </td>
+      <td class="num">{{bytes .Used $l}}</td>
+      <td>{{if .BlockReason}}<span class="badge badge-danger">{{reason $l .BlockReason}}</span>{{else}}<span class="badge badge-neutral">{{T $l "devices.ok"}}</span>{{end}}</td>
+      <td class="num">{{.LastSeen}}</td>
+    </tr>
+    {{end}}
+    </tbody>
+  </table>
+  </div>
+  </section>
+
+  <section class="panel" id="domestic" role="tabpanel" aria-labelledby="tab-domestic" tabindex="0" hidden>
+  <div class="page-head"><h2>{{T $l "domestic.title"}}</h2></div>
+  <div class="row" style="margin-bottom:8px">
+    <form method="post" action="/admin/domestic/refresh">
+      <button class="btn btn-sm btn-primary">{{T $l "domestic.refresh"}}</button>
+    </form>
+    <form method="get" action="/admin" class="row">
+      <input type="hidden" name="dpage" value="1">
+      <input class="input input-sm" name="dq" value="{{.DomesticQuery}}" placeholder="{{T $l "domestic.search_ph"}}" style="width:220px">
+      <button class="btn btn-sm btn-secondary">{{T $l "domestic.search"}}</button>
+    </form>
+    <span class="muted small">
+      {{T $l "domestic.last"}} {{if .DomesticRefreshed}}{{.DomesticRefreshed}}{{else}}{{T $l "domestic.never"}}{{end}}
+      · {{.DomesticTotal}} {{T $l "domestic.rows"}}
+    </span>
+  </div>
+  <p class="muted small">{{T $l "domestic.hint"}}</p>
+  {{if .Domestic}}
+  <div class="card table-wrap">
+  <table class="table">
+    <thead><tr><th scope="col">{{T $l "th.domain"}}</th><th scope="col">{{T $l "th.network"}}</th><th scope="col">{{T $l "th.updated"}}</th><th scope="col">{{T $l "th.due"}}</th></tr></thead>
+    <tbody>
+    {{range .Domestic}}
+    <tr><td class="ltr">{{.Domain}}</td><td class="num ltr">{{.Network}}</td><td class="num">{{.Updated}}</td><td class="num">{{.Due}}</td></tr>
+    {{end}}
+    </tbody>
+  </table>
+  </div>
+  <nav aria-label="{{T $l "domestic.title"}}">
+    <ul class="pagination">
+      <li class="page-item{{if not .DomesticHasPrev}} is-disabled{{end}}">
+        {{if .DomesticHasPrev}}<a class="page-link" href="/admin?dq={{.DomesticQuery | urlquery}}&dpage={{.DomesticPrev}}">{{T $l "domestic.prev"}}</a>{{else}}<span class="page-link">{{T $l "domestic.prev"}}</span>{{end}}
+      </li>
+      <li class="page-item is-current"><span class="page-link">{{.DomesticPage}} / {{.DomesticPages}}</span></li>
+      <li class="page-item{{if not .DomesticHasNext}} is-disabled{{end}}">
+        {{if .DomesticHasNext}}<a class="page-link" href="/admin?dq={{.DomesticQuery | urlquery}}&dpage={{.DomesticNext}}">{{T $l "domestic.next"}}</a>{{else}}<span class="page-link">{{T $l "domestic.next"}}</span>{{end}}
+      </li>
+    </ul>
+  </nav>
+  {{else if .DomesticQuery}}
+  <div class="alert">{{T $l "domestic.no_match"}}</div>
+  {{else}}
+  <div class="alert">{{T $l "domestic.empty"}}</div>
+  {{end}}
+  </section>
+
+  <section class="panel" id="routes" role="tabpanel" aria-labelledby="tab-routes" tabindex="0" hidden>
+  <div class="page-head"><h2>{{T $l "routes.title"}}</h2></div>
+  <p class="muted small">{{T $l "routes.hint"}}</p>
+  <p class="muted small">{{T $l "routes.rate_hint"}}</p>
+  <div class="card table-wrap">
+  <table class="table">
+    <thead><tr><th scope="col">{{T $l "th.name"}}</th><th scope="col">{{T $l "th.kind"}}</th><th scope="col">{{T $l "th.upstream"}}</th><th scope="col">{{T $l "th.access"}}</th><th scope="col"></th></tr></thead>
+    <tbody>
+    {{range .RateRows}}
+    {{$rt := .Route}}
+    <tr>
+      <td colspan="5">
+        <form method="post" action="/admin/route" class="stack">
+          <div class="row">
+            <input type="hidden" name="id" value="{{$rt.ID}}">
+            <input class="input input-sm" name="name" value="{{$rt.Name}}" style="width:110px">
+            <select class="select input-sm" name="kind">
+              {{$k := $rt.Kind}}
+              <option {{if eq $k "direct"}}selected{{end}}>direct</option>
+              <option {{if eq $k "v2ray"}}selected{{end}}>v2ray</option>
+              <option {{if eq $k "socks"}}selected{{end}}>socks</option>
+              <option {{if eq $k "http"}}selected{{end}}>http</option>
+              <option {{if eq $k "psiphon"}}selected{{end}}>psiphon</option>
+            </select>
+            <label class="check"><input type="checkbox" name="allow_all" value="1" {{if $rt.AllowAll}}checked{{end}}> <span>{{T $l "routes.all_persons"}}</span></label>
+            <label class="check"><input type="checkbox" name="enabled" value="1" {{if $rt.Enabled}}checked{{end}}> <span>{{T $l "routes.enabled"}}</span></label>
+            <input class="input input-sm" name="upstream" value="{{$rt.UpstreamJSON}}" style="min-width:260px">
+            <button class="btn btn-sm btn-secondary">{{T $l "routes.save"}}</button>
+          </div>
+          <div class="row small">
+            <span class="muted">{{T $l "routes.rates"}}</span>
+            {{range .Cells}}
+            <label class="row" style="gap:.25rem">{{.ClassName}} <input class="input input-sm" type="number" step="0.01" min="0" name="w_{{.RouteID}}_{{.ClassID}}" value="{{printf "%.2f" .Weight}}" style="width:70px"></label>
+            {{end}}
+          </div>
+        </form>
+      </td>
+    </tr>
+    {{end}}
+    <tr>
+      <td colspan="5">
+        <form method="post" action="/admin/route" class="stack">
+          <div class="row">
+            <input type="hidden" name="id" value="0">
+            <input class="input input-sm" name="name" placeholder="{{T $l "routes.new_ph"}}" required>
+            <select class="select input-sm" name="kind"><option>direct</option><option>v2ray</option><option>socks</option><option>http</option><option>psiphon</option></select>
+            <label class="check"><input type="checkbox" name="allow_all" value="1" checked> <span>{{T $l "routes.all_persons"}}</span></label>
+            <label class="check"><input type="checkbox" name="enabled" value="1" checked> <span>{{T $l "routes.enabled"}}</span></label>
+            <input class="input input-sm" name="upstream" value="{}" style="min-width:260px">
+            <button class="btn btn-sm btn-primary">{{T $l "routes.add"}}</button>
+          </div>
+          <div class="row small">
+            <span class="muted">{{T $l "routes.rates"}}</span>
+            {{range .Classes}}
+            <label class="row" style="gap:.25rem">{{.Name}} <input class="input input-sm" type="number" step="0.01" min="0" name="w_0_{{.ID}}" value="1.00" style="width:70px"></label>
+            {{end}}
+          </div>
+        </form>
+      </td>
+    </tr>
+    </tbody>
+  </table>
+  </div>
+  </section>
+
+  <section class="panel" id="usage" role="tabpanel" aria-labelledby="tab-usage" tabindex="0" hidden>
+  <div class="page-head"><h2>{{T $l "usage.title"}}</h2></div>
+  <div class="card table-wrap">
+  <table class="table">
+    <thead><tr><th scope="col">{{T $l "th.subject"}}</th><th scope="col">{{T $l "th.route"}}</th><th scope="col">{{T $l "th.class"}}</th><th scope="col">{{T $l "th.up"}}</th><th scope="col">{{T $l "th.down"}}</th><th scope="col">{{T $l "th.charged"}}</th></tr></thead>
+    <tbody>
+    {{range .Usage}}
+    <tr><td>{{.Subject}}</td><td>{{.Route}}</td><td>{{.Class}}</td>
+      <td class="num">{{bytes .Up $l}}</td><td class="num">{{bytes .Down $l}}</td>
+      <td class="num">{{bytes .Charged $l}}</td></tr>
+    {{end}}
+    </tbody>
+  </table>
+  </div>
+  </section>
+
+  <section class="panel" id="audit" role="tabpanel" aria-labelledby="tab-audit" tabindex="0" hidden>
+  <div class="page-head"><h2>{{T $l "audit.title"}}</h2></div>
+  <div class="card table-wrap">
+  <table class="table">
+    <thead><tr><th scope="col">{{T $l "th.when"}}</th><th scope="col">{{T $l "th.kind"}}</th><th scope="col">{{T $l "th.subject"}}</th><th scope="col">{{T $l "th.detail"}}</th></tr></thead>
+    <tbody>
+    {{range .Events}}
+    <tr><td class="num">{{.When}}</td><td>{{.Kind}}</td><td>{{.Subject}}</td><td>{{.Detail}}</td></tr>
+    {{end}}
+    </tbody>
+  </table>
+  </div>
+  </section>
+
+  <section class="panel" id="machine" role="tabpanel" aria-labelledby="tab-machine" tabindex="0" hidden>
+  <div class="page-head"><h2>{{T $l "machine.title"}}</h2></div>
+  <p class="muted"><a href="/admin/api/summary">/admin/api/summary</a> — {{T $l "machine.hint"}} <code>POST /admin/bypass on=1|0</code></p>
+  </section>
+
+</main>
+</div>
+<script>
+(() => {
+  const key = 'useg-tab';
+  const tabs = [...document.querySelectorAll('.nav [data-tab]')];
+  const show = id => {
+    tabs.forEach(t => {
+      const on = t.dataset.tab === id;
+      t.classList.toggle('is-active', on);
+      t.setAttribute('aria-selected', on ? 'true' : 'false');
+      const panel = document.getElementById(t.dataset.tab);
+      if (panel) panel.hidden = !on;
+    });
+    sessionStorage.setItem(key, id);
+  };
+  const saved = sessionStorage.getItem(key);
+  if (saved && document.getElementById(saved)) show(saved);
+  tabs.forEach(t => {
+    t.addEventListener('click', () => show(t.dataset.tab));
+    t.addEventListener('keydown', e => {
+      const i = tabs.indexOf(t);
+      if (e.key === 'ArrowDown' || e.key === 'ArrowRight') { e.preventDefault(); tabs[(i + 1) % tabs.length].focus(); }
+      if (e.key === 'ArrowUp' || e.key === 'ArrowLeft') { e.preventDefault(); tabs[(i - 1 + tabs.length) % tabs.length].focus(); }
+    });
+  });
+})();
+</script>
+</body>
+</html>

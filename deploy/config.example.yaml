@@ -1,0 +1,29 @@
+# /etc/useg/config.yaml — the Debian box. The dev container uses the same
+# struct with different addresses; there are no other differences.
+data_dir: /var/lib/useg
+db: /var/lib/useg/useg.db
+
+# The LAN side. The box is a normal host with one NIC.
+lan_cidr: 192.168.1.0/24
+box_ip: 192.168.1.2
+router_ip: 192.168.1.1
+iface: eth0
+
+# Portal on 80 so blocked HTTP can be redirected to it; admin on its own port
+# so it can later move behind TLS or an SSH tunnel without touching the portal.
+portal_listen: ":80"
+admin_listen: ":8080"
+admin_password: change-me-before-first-boot
+portal_port: 80
+
+tproxy_port: 7895
+clash_url: http://127.0.0.1:9090
+singbox_bin: /usr/local/bin/sing-box
+singbox_config: /var/lib/useg/sing-box.json
+leases_file: /var/lib/misc/dnsmasq.leases
+timezone: Asia/Tehran
+
+# true = nftables rules and blocking are applied. Set false only to run the
+# agent for its UI/database on a machine that is not the gateway.
+enforce: true
+dev: false
