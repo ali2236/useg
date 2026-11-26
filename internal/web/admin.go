@@ -874,6 +874,17 @@ func (s *Server) postRouteDelete(r *http.Request) error {
 // mode, and in monthly mode the pool and guest share. The raw ceiling always
 // mirrors the pool, so it is written with it.
 func (s *Server) postDataSettings(r *http.Request) error {
+	pool, err := formGB(r, "pool_charged_gb")
+	if err != nil {
+		return err
+	}
+	guest, err := formGB(r, "guest_pool_gb")
+	if err != nil {
+		return err
+	}
+	if _, err := formGB(r, "guest_device_gb"); err != nil {
+		return err
+	}
 	for _, k := range []string{"pool_charged_gb", "guest_pool_gb", "guest_device_gb"} {
 		if !r.Form.Has(k) {
 			continue
@@ -890,14 +901,6 @@ func (s *Server) postDataSettings(r *http.Request) error {
 	if period.AllocMode == "manual" {
 		// The cycle's pool and guest share belong to the cycle forms.
 		return s.db.AddEvent("data_settings", subj, "guest device updated")
-	}
-	pool, err := formGB(r, "pool_charged_gb")
-	if err != nil {
-		return err
-	}
-	guest, err := formGB(r, "guest_pool_gb")
-	if err != nil {
-		return err
 	}
 	if _, err := s.db.Exec(`UPDATE period SET pool_charged = ?, guest_pool = ?, raw_ceiling = ? WHERE id = ?`,
 		pool, guest, pool, period.ID); err != nil {
