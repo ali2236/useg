@@ -8,20 +8,20 @@ Route kinds:
 
 | Kind | Implementation |
 |---|---|
-| `direct` | sing-box `direct`, NAT to `192.168.1.1` |
+| `direct` | sing-box `direct`, NAT to `192.168.100.1` |
 | `psiphon` | `psiphon-tunnel-core` child process, local SOCKS port, sing-box `socks` outbound |
 | `v2ray` | sing-box outbound using the admin's VLESS/VMess/Trojan/SS settings |
 | `socks` / `http` | any other upstream proxy |
 
 ## 5.1 Subscription format
 
-`GET http://192.168.1.2/sub/<token>` (alias `http://portal.gate/sub/<token>`)
+`GET http://192.168.100.2/sub/<token>` (alias `http://portal.gate/sub/<token>`)
 returns base64 of newline-separated URIs, one per enabled route:
 
 ```
-vless://b1f0c2e4-…@192.168.1.2:10443?type=tcp&security=none#primary
-vless://b1f0c2e4-…@192.168.1.2:10444?type=tcp&security=none#psiphon
-vless://b1f0c2e4-…@192.168.1.2:10445?type=tcp&security=none#upstream
+vless://b1f0c2e4-…@192.168.100.2:10443?type=tcp&security=none#primary
+vless://b1f0c2e4-…@192.168.100.2:10444?type=tcp&security=none#psiphon
+vless://b1f0c2e4-…@192.168.100.2:10445?type=tcp&security=none#upstream
 ```
 
 Properties this buys:

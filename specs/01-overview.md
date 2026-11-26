@@ -53,19 +53,19 @@ The ISP router stays where it is. The box is a normal host on the same LAN.
 ```
         ISP
          │
-  home router 192.168.1.1
+  home router 192.168.100.1
   NAT · DHCP OFF · unchanged
          │
   ───────┴───────── L2 switch ────────────────
      │                  │                  │
   useg box            APs (bridge)      devices
-  192.168.1.2
+  192.168.100.2
   DHCP · DNS · gateway · proxy
 ```
 
 Consequences of keeping the router in the path:
 
-- Double NAT. Harmless here; the box NATs to `192.168.1.1`, the router NATs to
+- Double NAT. Harmless here; the box NATs to `192.168.100.1`, the router NATs to
   the WAN.
 - The box has **one NIC and one IP**. It forwards packets in and back out the
   same interface, which is legal with `ip_forward=1`.
@@ -104,4 +104,4 @@ net.ipv6.conf.all.disable_ipv6 = 1       # IPv6 out of scope for v1
 
 `send_redirects = 0` matters: with the box and the router on the same segment,
 the kernel would otherwise send ICMP redirects pointing clients straight at
-`192.168.1.1`, silently defeating the whole system.
+`192.168.100.1`, silently defeating the whole system.

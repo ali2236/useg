@@ -90,7 +90,7 @@ Seeded dev numbers are deliberately tiny (50 MB charged pool, 20 MB guest pool,
 5 MB per guest device) so quota behaviour shows up in minutes instead of weeks.
 `make dev-fresh` wipes the database and reseeds.
 
-The dev network is `10.66.0.0/24`, not a typical home `192.168.1.0/24`, so the
+The dev network is `10.66.0.0/24`, not a typical home `192.168.100.0/24`, so the
 two never fight over routes. Docker Hub is blocked on some networks, so the
 Dockerfiles pull base images from `docker.m.daocloud.io`; on a network where Hub
 is reachable, drop that prefix.

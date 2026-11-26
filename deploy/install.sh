@@ -116,10 +116,10 @@ if [ ! -f "$CONF" ]; then
         { for (i = 1; i <= 4; i++) if ($i !~ /^[0-9]+$/ || $i > 255) exit 1 }
       '
     }
-    BOX=$(ask "LAN IP for this box" 192.168.1.2)
+    BOX=$(ask "LAN IP for this box" 192.168.100.2)
     until valid_ip "$BOX"; do
       echo "not an IPv4 address"
-      BOX=$(ask "LAN IP for this box" 192.168.1.2)
+      BOX=$(ask "LAN IP for this box" 192.168.100.2)
     done
     BASE=${BOX%.*}
     ROUTER=$(ask "Router (ISP) IP" "$BASE.1")
@@ -177,7 +177,6 @@ if ! ip link show "$IFACE" >/dev/null 2>&1; then
   fi
 fi
 BOX=$(cfg box_ip)
-ROUTER=$(cfg router_ip)
 BASE=$(cfg lan_cidr); BASE=${BASE%.*}
 ADMIN_PORT=$(cfg admin_listen); ADMIN_PORT=${ADMIN_PORT##*:}; ADMIN_PORT=${ADMIN_PORT:-8080}
 PORTAL_PORT=$(cfg portal_listen); PORTAL_PORT=${PORTAL_PORT##*:}; PORTAL_PORT=${PORTAL_PORT:-80}
@@ -206,8 +205,9 @@ sysctl -q --system
 sed \
   -e "s/^interface=.*/interface=$IFACE/" \
   -e "s/^dhcp-range=.*/dhcp-range=$BASE.50,$BASE.240,12h/" \
-  -e "s/192\.168\.1\.2/$BOX/g" \
-  -e "s/192\.168\.1\.1/$ROUTER/g" \
+  -e "s/^dhcp-option=3,.*/dhcp-option=3,$BOX/" \
+  -e "s/^dhcp-option=6,.*/dhcp-option=6,$BOX/" \
+  -e "s|^address=/portal.gate/.*|address=/portal.gate/$BOX|" \
   deploy/dnsmasq-useg.conf > /etc/dnsmasq.d/useg.conf
 
 # Fail here with dnsmasq's own message, not after a failed restart. Run it the
@@ -252,9 +252,12 @@ useg installed and running.
 Before the household notices anything:
   1. Turn the ISP router's DHCP server OFF. Two DHCP servers is the classic
      way this setup half-works.
-  2. Open the admin UI and set the Jalali anchor and pools (Period), then add
+  2. Check the box's own resolver: /etc/resolv.conf (or resolvectl) must not
+     point at the router. Its DNS stops when its DHCP is off. Use
+     217.218.127.127 or $BOX instead.
+  3. Open the admin UI and set the Jalali anchor and pools (Period), then add
      people and routes.
-  3. If your LAN is not a /24, edit lan_cidr in $CONF and run sudo make update.
+  4. If your LAN is not a /24, edit lan_cidr in $CONF and run sudo make update.
 
 Escape hatch: turn the router's DHCP back on and the box is out of the path.
 Maintenance bypass: the switch on the admin page (survives restarts).

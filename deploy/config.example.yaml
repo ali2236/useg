@@ -4,9 +4,9 @@ data_dir: /var/lib/useg
 db: /var/lib/useg/useg.db
 
 # The LAN side. The box is a normal host with one NIC.
-lan_cidr: 192.168.1.0/24
-box_ip: 192.168.1.2
-router_ip: 192.168.1.1
+lan_cidr: 192.168.100.0/24
+box_ip: 192.168.100.2
+router_ip: 192.168.100.1
 iface: eth0
 
 # Portal on 80 so blocked HTTP can be redirected to it; admin on its own port

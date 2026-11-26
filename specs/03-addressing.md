@@ -4,15 +4,51 @@
 
 ```
 interface=eth0
-dhcp-range=192.168.1.50,192.168.1.240,12h
-dhcp-option=3,192.168.1.2            # gateway = box
-dhcp-option=6,192.168.1.2            # DNS = box
+dhcp-range=192.168.100.50,192.168.100.240,12h
+dhcp-option=3,192.168.100.2            # gateway = box
+dhcp-option=6,192.168.100.2            # DNS = box
 dhcp-leasefile=/var/lib/misc/dnsmasq.leases
-address=/portal.gate/192.168.1.2     # friendly portal name
-server=192.168.1.1                   # upstream resolver
+address=/portal.gate/192.168.100.2     # friendly portal name
+no-resolv                            # ignore the host's /etc/resolv.conf
+strict-order                         # try the servers below in this order
+server=1.1.1.1                       # Cloudflare
+server=217.218.127.127               # TCI
+server=217.218.155.155               # TCI
+server=10.202.10.202                 # Radar (Iran-only)
+server=10.202.10.102                 # Radar (Iran-only)
+server=185.55.226.26                 # Begzar
+server=185.55.225.25                 # Begzar
+server=1.0.0.1                       # Cloudflare
+server=8.8.8.8                       # Google
+server=8.8.4.4                       # Google
+server=9.9.9.9                       # Quad9
+server=149.112.112.112               # Quad9
+server=178.22.122.100                # Shecan
+server=185.51.200.2                  # Shecan
 domain-needed
 bogus-priv
 ```
+
+`no-resolv` and `strict-order` are deliberate. The host's `/etc/resolv.conf`
+may list a public resolver such as `8.8.8.8`, which is commonly blocked or
+intercepted on a TCI line; without `no-resolv` dnsmasq would use it alongside
+the servers above and answers would vary by query. `strict-order` tries the
+servers in the order listed — Cloudflare first, TCI next, Shecan last — and
+moves down only when one fails.
+
+Plain UDP/53 to public resolvers is also commonly intercepted on these lines
+(a blocked name can return `10.10.34.36` even when queried at `1.1.1.1`). So the
+Cloudflare-first order is an availability choice, not a guarantee of unfiltered
+answers; the long list is for failover, not for bypassing filtering.
+Independent resolution needs DoH/DoT over a route and is out of scope for v1.
+The ISP router is deliberately absent from the list: its DHCP server must be
+off, and its DNS forwarder stops with it, so `192.168.100.1` is not a resolver.
+The box is the only DNS on the LAN.
+
+The box's own resolver is separate: point it at `217.218.127.127` or
+`192.168.100.2` (dnsmasq), not the router and not a public resolver. glibc
+reads at most three nameservers from `/etc/resolv.conf`; `systemd-resolved` can
+hold the whole list.
 
 The lease file is the device inventory's raw feed: MAC, IP, hostname, expiry.
 The agent watches it, writes changes into `device`, and re-applies any block

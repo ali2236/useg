@@ -39,7 +39,7 @@ overrides a stale HTTP-derived binding.
 
 ## 4.3 Anti-bypass
 
-- nftables drops client→`192.168.1.1` so nobody can set the router as gateway.
+- nftables drops client→`192.168.100.1` so nobody can set the router as gateway.
 - `send_redirects=0` so the kernel cannot hand out a shortcut.
 - Residual hole: on a shared L2 a device can ARP-spoof the router and bypass
   the box entirely. Closing that needs a separate segment (VLAN or a second

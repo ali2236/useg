@@ -4,7 +4,7 @@ All traffic is forced through a single userspace proxy, because destination
 weighting needs layer 7 and alternative routes need a proxy anyway.
 
 ```
-client ──▶ nftables prerouting ──TPROXY──▶ sing-box ──▶ outbound ──▶ 192.168.1.1
+client ──▶ nftables prerouting ──TPROXY──▶ sing-box ──▶ outbound ──▶ 192.168.100.1
                                               │              │
                                     sniff SNI / HTTP Host   direct | psiphon | v2ray | socks
                                               │

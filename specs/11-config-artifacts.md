@@ -4,8 +4,8 @@
 
 ```
 table inet useg {
-    set lan4     { type ipv4_addr; flags interval; elements = { 192.168.1.0/24 } }
-    set router4  { type ipv4_addr; elements = { 192.168.1.1 } }
+    set lan4     { type ipv4_addr; flags interval; elements = { 192.168.100.0/24 } }
+    set router4  { type ipv4_addr; elements = { 192.168.100.1 } }
     set blocked4 { type ipv4_addr; flags interval; }
     set devbytes { type ipv4_addr; counter; }   # per-device raw bytes, drift report only
 
@@ -13,7 +13,7 @@ table inet useg {
         type filter hook prerouting priority mangle; policy accept;
 
         # local services are always reachable (DNS, portal, subscription)
-        ip daddr 192.168.1.2 meta l4proto { tcp, udp } th dport { 53, 80, 8080 } accept
+        ip daddr 192.168.100.2 meta l4proto { tcp, udp } th dport { 53, 80, 8080 } accept
 
         # raw counters for the nightly drift check — never used to charge or block
         ip saddr @lan4 update @devbytes { ip saddr }
@@ -54,9 +54,9 @@ ip route add local 0.0.0.0/0 dev lo table 100
   "inbounds": [
     { "type": "tproxy", "tag": "tp", "listen": "0.0.0.0", "listen_port": 7895,
       "sniff": true, "sniff_override_destination": true },
-    { "type": "vless", "tag": "p1:direct", "listen": "192.168.1.2",
+    { "type": "vless", "tag": "p1:direct", "listen": "192.168.100.2",
       "listen_port": 10443, "users": [{ "name": "p1", "uuid": "…" }] },
-    { "type": "vless", "tag": "p1:psiphon", "listen": "192.168.1.2",
+    { "type": "vless", "tag": "p1:psiphon", "listen": "192.168.100.2",
       "listen_port": 10444, "users": [{ "name": "p1", "uuid": "…" }] }
   ],
   "outbounds": [
