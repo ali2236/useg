@@ -45,6 +45,11 @@ Stated plainly because quota systems live or die on this:
 | The box's own traffic is not proxied | admin downloads uncounted | accepted; option later |
 | Poll-based, not event-based | not exact to the byte | accepted at this scale; escalation is a patched flow-close event or eBPF |
 
+The ledger contains WAN traffic only. LAN-to-LAN, multicast (mDNS, SSDP),
+broadcast, link-local and traffic to the box are accepted before TPROXY and
+never reach the proxy; the accountant also drops any flow whose destination is
+local, so those bytes can never be charged even if the ruleset is stale.
+
 **Drift check, not enforcement:** nftables keeps per-source-IP raw counters.
 Once a night the agent compares them with the sum of accounted raw bytes per
 device and reports the gap. If it exceeds 2%, the UI says so. These counters are

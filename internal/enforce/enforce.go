@@ -50,8 +50,17 @@ func Ruleset(o Options) string {
     # the admin UI and every VLESS listener live there
     ip daddr @box4 accept
 
+    # Local-only destinations are never proxied or counted. TPROXY swallows
+    # multicast (mDNS, SSDP), limited broadcast and link-local, which breaks
+    # discovery and makes macOS retry forever; LAN-to-LAN stays on the wire.
+    ip saddr @lan4 ip daddr @lan4 accept
+    ip daddr 224.0.0.0/4 accept
+    ip daddr 255.255.255.255 accept
+    ip daddr 169.254.0.0/16 accept
+
     # raw per-device counters, both directions: drift report only, never used
-    # to charge or block
+    # to charge or block. Local destinations were accepted above, so these
+    # count WAN <-> LAN only.
     ip saddr @lan4 update @devbytes { ip saddr }
     ip daddr @lan4 update @devbytes { ip daddr }
 
@@ -87,7 +96,13 @@ func NatRuleset(o Options) string {
 	return fmt.Sprintf(`table inet usegnat {
   chain postrouting {
     type nat hook postrouting priority srcnat; policy accept;
-    ip saddr %s oifname "%s" masquerade
+    # Local-only destinations keep their real source: MASQUERADE would make
+    # mDNS/broadcast look like they came from the box.
+    ip daddr %[1]s return
+    ip daddr 224.0.0.0/4 return
+    ip daddr 255.255.255.255 return
+    ip daddr 169.254.0.0/16 return
+    ip saddr %[1]s oifname "%[2]s" masquerade
   }
 }`, o.LanCIDR, o.Iface)
 }

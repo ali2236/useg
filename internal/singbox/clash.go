@@ -17,7 +17,8 @@ type Client struct {
 }
 
 func NewClient(base string) *Client {
-	return &Client{base: base, hc: &http.Client{Timeout: 3 * time.Second}}
+	// The poll runs every 250 ms; a stuck API must not cost whole seconds.
+	return &Client{base: base, hc: &http.Client{Timeout: time.Second}}
 }
 
 // flexString accepts the string-or-number encoding Clash uses for ports.

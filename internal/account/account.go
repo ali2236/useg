@@ -5,6 +5,7 @@ package account
 import (
 	"fmt"
 	"log/slog"
+	"net/netip"
 	"sort"
 	"strings"
 	"sync"
@@ -53,6 +54,8 @@ type Accountant struct {
 	db    *store.DB
 	clash *singbox.Client
 	log   *slog.Logger
+	lan   netip.Prefix
+	box   netip.Addr
 
 	mu        sync.Mutex
 	periodID  int64
@@ -62,9 +65,10 @@ type Accountant struct {
 	refreshed time.Time
 	st        state
 	bindSeen  map[string]time.Time
+	lastErr   time.Time
 }
 
-func New(db *store.DB, clash *singbox.Client, log *slog.Logger) *Accountant {
+func New(db *store.DB, clash *singbox.Client, log *slog.Logger, lanCIDR, boxIP string) *Accountant {
 	a := &Accountant{
 		db:       db,
 		clash:    clash,
@@ -73,9 +77,45 @@ func New(db *store.DB, clash *singbox.Client, log *slog.Logger) *Accountant {
 		buckets:  map[bucketKey]*bucket{},
 		bindSeen: map[string]time.Time{},
 	}
+	if p, err := netip.ParsePrefix(lanCIDR); err == nil {
+		a.lan = p.Masked()
+	}
+	if ip, err := netip.ParseAddr(boxIP); err == nil {
+		a.box = ip
+	}
 	a.reloadLocked()
 	a.lastFlush = time.Now()
 	return a
+}
+
+// localDest is the accounting-side guarantee that only traffic leaving the LAN
+// is metered. The nft rules already keep local destinations out of the proxy;
+// this catches a stale ruleset, a moved box IP, or a proxy that accepted a
+// multicast packet anyway.
+func (a *Accountant) localDest(dst string) bool {
+	addr, err := netip.ParseAddr(dst)
+	if err != nil {
+		return false // unknown/domain destination: not local
+	}
+	addr = addr.Unmap()
+	if a.box.IsValid() && addr == a.box {
+		return true
+	}
+	if a.lan.IsValid() && a.lan.Contains(addr) {
+		return true
+	}
+	if addr.IsPrivate() || addr.IsLoopback() || addr.IsMulticast() ||
+		addr.IsLinkLocalUnicast() || addr.IsLinkLocalMulticast() || addr.IsUnspecified() {
+		return true
+	}
+	if addr.Is4() {
+		b := addr.As4()
+		// limited broadcast and the reserved/experimental ranges
+		if b == [4]byte{255, 255, 255, 255} || b[0] == 0 || b[0] >= 240 {
+			return true
+		}
+	}
+	return false
 }
 
 // RollPeriod flushes the old period's buckets before switching, so a boundary
@@ -180,6 +220,9 @@ func hostOf(c singbox.Conn) string {
 }
 
 func (a *Accountant) newFlow(c singbox.Conn, now time.Time) *flow {
+	if a.localDest(c.Metadata.DestinationIP) {
+		return nil
+	}
 	f := &flow{up: c.Upload, down: c.Download}
 	ref, laneB := a.st.creds[inboundTag(c.Metadata)]
 	if laneB {
@@ -258,15 +301,20 @@ func (a *Accountant) refreshBinding(dev store.Device, now time.Time) {
 }
 
 func (a *Accountant) Tick(now time.Time) {
+	// Fetch before taking the lock: a slow or wedged Clash API must not hold up
+	// Pending(), and with it every admin request, behind a network timeout.
+	conns, err := a.clash.Connections()
+	if err != nil {
+		if now.Sub(a.lastErr) >= time.Minute {
+			a.lastErr = now
+			a.log.Warn("clash api unavailable", "err", err)
+		}
+		return
+	}
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	if now.Sub(a.refreshed) > 20*time.Second {
 		a.reloadLocked()
-	}
-	conns, err := a.clash.Connections()
-	if err != nil {
-		a.log.Debug("clash api unavailable", "err", err)
-		return
 	}
 	seen := make(map[string]bool, len(conns))
 	for _, c := range conns {

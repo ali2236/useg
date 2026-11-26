@@ -1,6 +1,7 @@
 package web
 
 import (
+	"bytes"
 	"context"
 	"crypto/rand"
 	"crypto/subtle"
@@ -72,10 +73,16 @@ func New(db *store.DB, cfg *config.Config, nft *enforce.Nft, log *slog.Logger) (
 }
 
 func (s *Server) render(w http.ResponseWriter, name string, data any) {
-	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	if err := s.tmpl.ExecuteTemplate(w, name, data); err != nil {
+	// Buffer first: a template error must be a clean 500, not a half-written
+	// page the browser waits on forever.
+	var buf bytes.Buffer
+	if err := s.tmpl.ExecuteTemplate(&buf, name, data); err != nil {
 		s.log.Error("render", "tmpl", name, "err", err)
+		http.Error(w, "render error", http.StatusInternalServerError)
+		return
 	}
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	_, _ = w.Write(buf.Bytes())
 }
 
 func clientIP(r *http.Request) string {

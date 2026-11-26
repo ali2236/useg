@@ -1,7 +1,8 @@
 SHELL := /bin/bash
 HOSTARCH := $(shell go env GOARCH 2>/dev/null)
+DB ?= /var/lib/useg/useg.db
 
-.PHONY: test build install update dev dev-fresh down logs sh client-a a-curl b-curl probe redeploy
+.PHONY: test build install update reset dev dev-fresh down logs sh client-a a-curl b-curl probe redeploy
 
 test:
 	go vet ./...
@@ -23,6 +24,17 @@ install:
 update:
 	git pull --ff-only
 	$(MAKE) install
+
+# Delete every usage row (all periods). Run as root on the box: sudo make reset
+# The agent is stopped first so its in-memory buckets cannot flush back in.
+# For the dev rig: make reset DB=dev/data/useg.db
+reset:
+	test -f $(DB)
+	systemctl stop useg 2>/dev/null || true
+	sqlite3 $(DB) "delete from usage;"
+	# sqlite may have created WAL files as root; the service runs as useg
+	chown useg:useg $(DB) $(DB)-wal $(DB)-shm 2>/dev/null || true
+	systemctl start useg 2>/dev/null || true
 
 dev: build
 	TARGETARCH=$(HOSTARCH) docker compose up --build

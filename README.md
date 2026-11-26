@@ -21,7 +21,8 @@ quota loop, portal, subscription endpoint, admin UI).
 - **Meters the LAN without touching devices.** nftables TPROXY on a single NIC
   sends TCP through sing-box; the agent polls its Clash API every 250 ms, books
   per-connection deltas, flushes every 5 minutes, and shows the drift between the
-  raw nft counters and the ledger.
+  raw nft counters and the ledger. Only traffic that leaves the LAN is booked:
+  LAN-to-LAN, mDNS/broadcast and traffic to the box never enter the ledger.
 - **Attributes traffic from DHCP.** dnsmasq leases give IP → MAC → device. A
   device becomes a person's when it fetches that person's subscription or opens a
   VLESS connection from its IP; everything else is a guest with its own allowance.
@@ -163,6 +164,7 @@ touches `/etc/useg/config.yaml` or the database. Do not edit files inside
 | Back to metered | the same switch |
 | Bypass from a shell (UI unreachable) | `nft delete table inet useg` — NAT stays, traffic flows |
 | Undo the shell bypass | `systemctl restart useg` (rebuilds the table and the block set) |
+| Wipe all usage (keeps people, routes and the pool) | `sudo make reset` |
 | Restore a backup | `systemctl stop useg; cp backups/useg-YYYYMMDD-HHMM.db /var/lib/useg/useg.db; systemctl start useg` |
 | Escape hatch, whole system | turn the router's DHCP back on |
 | Upcoming Jalali boundaries | `useg period -c /etc/useg/config.yaml` |

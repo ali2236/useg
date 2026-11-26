@@ -12,11 +12,19 @@ table inet useg {
     chain prerouting {
         type filter hook prerouting priority mangle; policy accept;
 
-        # local services are always reachable (DNS, portal, subscription)
-        ip daddr 192.168.100.2 meta l4proto { tcp, udp } th dport { 53, 80, 8080 } accept
+        # the box itself is always reachable (DNS, portal, subscription, VLESS)
+        ip daddr 192.168.100.2 accept
 
-        # raw counters for the nightly drift check — never used to charge or block
+        # local-only destinations are never proxied or metered
+        ip saddr @lan4 ip daddr @lan4 accept
+        ip daddr 224.0.0.0/4 accept          # mDNS, SSDP
+        ip daddr 255.255.255.255 accept
+        ip daddr 169.254.0.0/16 accept
+
+        # raw counters for the nightly drift check — never used to charge or
+        # block; local destinations were accepted above, so WAN <-> LAN only
         ip saddr @lan4 update @devbytes { ip saddr }
+        ip daddr @lan4 update @devbytes { ip daddr }
 
         # blocked subjects: let the nat chain explain, then nothing
         ip saddr @blocked4 tcp dport 80 accept

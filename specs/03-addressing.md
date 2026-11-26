@@ -11,20 +11,21 @@ dhcp-leasefile=/var/lib/misc/dnsmasq.leases
 address=/portal.gate/192.168.100.2     # friendly portal name
 no-resolv                            # ignore the host's /etc/resolv.conf
 strict-order                         # try the servers below in this order
-server=1.1.1.1                       # Cloudflare
+cache-size=10000
 server=217.218.127.127               # TCI
 server=217.218.155.155               # TCI
+server=178.22.122.100                # Shecan
+server=185.51.200.2                  # Shecan
 server=10.202.10.202                 # Radar (Iran-only)
 server=10.202.10.102                 # Radar (Iran-only)
 server=185.55.226.26                 # Begzar
 server=185.55.225.25                 # Begzar
+server=1.1.1.1                       # Cloudflare
 server=1.0.0.1                       # Cloudflare
 server=8.8.8.8                       # Google
 server=8.8.4.4                       # Google
 server=9.9.9.9                       # Quad9
 server=149.112.112.112               # Quad9
-server=178.22.122.100                # Shecan
-server=185.51.200.2                  # Shecan
 domain-needed
 bogus-priv
 ```
@@ -33,8 +34,11 @@ bogus-priv
 may list a public resolver such as `8.8.8.8`, which is commonly blocked or
 intercepted on a TCI line; without `no-resolv` dnsmasq would use it alongside
 the servers above and answers would vary by query. `strict-order` tries the
-servers in the order listed — Cloudflare first, TCI next, Shecan last — and
-moves down only when one fails.
+servers in the order listed and moves down only when one fails, so **the first
+entry is the one that normally answers**: domestic resolvers (TCI, Shecan,
+Radar, Begzar) come first and the public ones are failover only. Public DNS
+first would mean every query waits for a blackholed resolver before falling
+back.
 
 Plain UDP/53 to public resolvers is also commonly intercepted on these lines
 (a blocked name can return `10.10.34.36` even when queried at `1.1.1.1`). So the

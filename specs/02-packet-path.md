@@ -14,8 +14,9 @@ client ──▶ nftables prerouting ──TPROXY──▶ sing-box ──▶ ou
 ```
 
 **Lane A — zero-install.** The client simply uses its default gateway (the
-box). nftables TPROXY-redirects TCP and UDP into the transparent inbound.
-Subject comes from source IP → DHCP lease → MAC → device → person or guest.
+box). nftables TPROXY-redirects internet-bound TCP and UDP into the transparent
+inbound. Subject comes from source IP → DHCP lease → MAC → device → person or
+guest.
 
 **Lane B — subscription.** The client runs a V2Ray client with one of the
 person's configs. Each `(person, route)` pair has its **own VLESS inbound with
@@ -29,6 +30,13 @@ exactly one connection object per flow, so nothing is counted twice.
 **DNS** goes to `dnsmasq` on the box, which resolves for the LAN and forwards
 upstream. DNS is never charged and never blocked: a blocked user must still be
 able to resolve the portal.
+
+**Local traffic is never metered.** Destinations on the LAN (`lan_cidr`), the
+box itself, multicast/broadcast and link-local are accepted before TPROXY. mDNS,
+SSDP and LAN-to-LAN therefore never reach the proxy and never enter the ledger;
+the NAT table also leaves them unmangled, so discovery keeps its real source
+address. The accountant re-checks the destination IP on every new flow, so a
+stale ruleset or a moved box IP cannot book local bytes either.
 
 **QUIC (UDP/443) is dropped in v1.** QUIC hides the hostname, so it can be
 neither weighted nor described in the UI. Dropping it forces TCP+TLS where SNI
