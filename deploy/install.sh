@@ -204,6 +204,13 @@ sed \
   -e "s/192\.168\.1\.1/$ROUTER/g" \
   deploy/dnsmasq-useg.conf > /etc/dnsmasq.d/useg.conf
 
+# Fail here with dnsmasq's own message, not after a failed restart. A keyword
+# repeated from /etc/dnsmasq.conf (dhcp-leasefile was one) counts as an error.
+if ! testout=$(dnsmasq --test 2>&1); then
+  printf '%s\n' "$testout" >&2
+  die "dnsmasq rejects the generated /etc/dnsmasq.d/useg.conf"
+fi
+
 install -m 0644 deploy/useg.service /etc/systemd/system/useg.service
 install -m 0755 deploy/useg-backup.sh /usr/local/bin/useg-backup.sh
 install -m 0644 deploy/useg-backup.service /etc/systemd/system/useg-backup.service
