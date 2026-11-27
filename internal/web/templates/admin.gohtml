@@ -705,6 +705,14 @@
 
   <section class="panel" id="machine" role="tabpanel" aria-labelledby="tab-machine" tabindex="0" hidden>
   <div class="page-head"><h2>{{T $l "machine.title"}}</h2></div>
+  <div class="card stack">
+    <div class="card-head"><strong>{{T $l "update.title"}}</strong></div>
+    <p class="muted small m-0">{{T $l "update.hint"}}</p>
+    {{if .UpdateWhen}}<p class="muted small m-0">{{T $l "update.last"}} <span class="ltr">{{.UpdateWhen}}</span> · {{T $l (printf "update.state.%s" .UpdateState)}}</p>{{end}}
+    <form method="post" action="/admin/update" onsubmit="return confirm('{{T $l "update.confirm"}}')">
+      <button class="btn btn-primary">{{T $l "update.run"}}</button>
+    </form>
+  </div>
   <p class="muted"><a href="/admin/api/summary">/admin/api/summary</a> — {{T $l "machine.hint"}} <code>POST /admin/bypass on=1|0</code></p>
   </section>
 

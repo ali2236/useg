@@ -224,6 +224,14 @@ install -D -m 0644 deploy/dnsmasq-restart.conf /etc/systemd/system/dnsmasq.servi
 install -m 0755 deploy/useg-backup.sh /usr/local/bin/useg-backup.sh
 install -m 0644 deploy/useg-backup.service /etc/systemd/system/useg-backup.service
 install -m 0644 deploy/useg-backup.timer /etc/systemd/system/useg-backup.timer
+# The panel runs as useg inside a sandbox, so it can only write a request file;
+# this root unit pulls and reinstalls outside that sandbox. Replace atomically:
+# when make update was triggered by this very script, it may still be running.
+sed "s|@SRC@|$PWD|g" deploy/useg-update.sh > /usr/local/bin/useg-update.new
+chmod 0755 /usr/local/bin/useg-update.new
+mv /usr/local/bin/useg-update.new /usr/local/bin/useg-update
+install -m 0644 deploy/useg-update.service /etc/systemd/system/useg-update.service
+install -m 0644 deploy/useg-update.path /etc/systemd/system/useg-update.path
 install -m 0644 README.md /usr/local/share/useg/README.md
 
 systemctl daemon-reload
@@ -242,6 +250,7 @@ if [ "$CONFIGURED" = 1 ]; then
     die "useg exited on startup; the journal above says why"
   fi
   systemctl enable --now useg-backup.timer
+  systemctl enable --now useg-update.path
   cat <<EOF
 
 useg installed and running.

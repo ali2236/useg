@@ -285,6 +285,16 @@ var messages = map[string][2]string{
 
 	"machine.title": {"رابط ماشینی", "Machine interface"},
 	"machine.hint":  {"همین اعداد به‌صورت JSON. کلید بایپس:", "the same numbers as JSON. Bypass switch:"},
+
+	"update.title":         {"بروزرسانی", "Update"},
+	"update.hint":          {"آخرین نسخه را از گیت‌هاب می‌گیرد، دوباره می‌سازد و سرویس را راه‌اندازی می‌کند. چند ثانیه اینترنت قطع می‌شود و باید دوباره وارد شوید.", "Pulls the latest commit from GitHub, rebuilds and restarts the service. Internet drops for a few seconds and you must sign in again."},
+	"update.run":           {"بروزرسانی", "Update now"},
+	"update.confirm":       {"بروزرسانی انجام شود؟ سرویس برای چند ثانیه قطع می‌شود.", "Run the update? The service restarts for a few seconds."},
+	"update.requested":     {"بروزرسانی شروع شد", "update started"},
+	"update.last":          {"آخرین بروزرسانی:", "last update:"},
+	"update.state.running": {"در حال اجرا", "running"},
+	"update.state.ok":      {"موفق", "ok"},
+	"update.state.failed":  {"ناموفق", "failed"},
 }
 
 func T(l, key string) string {

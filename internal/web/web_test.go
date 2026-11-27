@@ -537,6 +537,27 @@ func TestAdminRouteSavesRates(t *testing.T) {
 	}
 }
 
+func TestAdminUpdateRequestsDeploy(t *testing.T) {
+	srv, _, cfg, _ := tserver(t)
+	h := srv.AdminHandler()
+	ok := do(h, "POST", "/admin/login", "10.66.0.3:5000", url.Values{"password": {"pw"}}, nil)
+	var cookie *http.Cookie
+	for _, c := range ok.Result().Cookies() {
+		if c.Name == sessionCookie {
+			cookie = c
+		}
+	}
+	if cookie == nil {
+		t.Fatal("no session cookie")
+	}
+	if rec := do(h, "POST", "/admin/update", "10.66.0.3:5000", nil, cookie); rec.Code != http.StatusSeeOther {
+		t.Fatalf("update status %d", rec.Code)
+	}
+	if _, err := os.Stat(filepath.Join(cfg.DataDir, "update.request")); err != nil {
+		t.Fatalf("request file: %v", err)
+	}
+}
+
 func TestAdminCapsSwitchUnblocksEverybody(t *testing.T) {
 	srv, db, _, _ := tserver(t)
 	h := srv.AdminHandler()

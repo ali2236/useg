@@ -5,6 +5,8 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"os"
+	"path/filepath"
 	"sort"
 	"strconv"
 	"strings"
@@ -145,6 +147,9 @@ type adminData struct {
 	DomesticHasNext   bool
 	DomesticQuery     string
 	DomesticRefreshed string
+
+	UpdateState string
+	UpdateWhen  string
 }
 
 // deviceActivity is the last time a device did something visible: moved bytes,
@@ -492,6 +497,16 @@ func (s *Server) adminData(r *http.Request, flash, errMsg string) (*adminData, e
 			d.DomesticRefreshed = jalali.Format(t, "numeric", s.loc) + " " + t.Format("15:04")
 		}
 	}
+	// The root update unit writes <state> <unix>; show the last result.
+	if b, err := os.ReadFile(filepath.Join(s.cfg.DataDir, "update.status")); err == nil {
+		if f := strings.Fields(string(b)); len(f) == 2 {
+			if ts, e := strconv.ParseInt(f[1], 10, 64); e == nil {
+				t := time.Unix(ts, 0).In(s.loc)
+				d.UpdateState = f[0]
+				d.UpdateWhen = jalali.Format(t, "numeric", s.loc) + " " + t.Format("15:04")
+			}
+		}
+	}
 	return d, nil
 }
 
@@ -606,6 +621,8 @@ func (s *Server) admin(w http.ResponseWriter, r *http.Request) {
 		err = s.postCaps(r)
 	case "/admin/domestic/refresh":
 		err = s.postDomesticRefresh(r)
+	case "/admin/update":
+		err = s.postUpdate()
 	default:
 		http.NotFound(w, r)
 		return
@@ -633,6 +650,8 @@ func (s *Server) admin(w http.ResponseWriter, r *http.Request) {
 		flash = "data.allocated_ok"
 	case "/admin/data/unallocate":
 		flash = "data.unallocated_ok"
+	case "/admin/update":
+		flash = "update.requested"
 	case "/admin/device":
 		switch r.FormValue("action") {
 		case "delete":
@@ -1233,6 +1252,13 @@ func (s *Server) postBypass(r *http.Request) error {
 		return err
 	}
 	return s.db.AddEvent("bypass", "gateway", "bypass "+label)
+}
+
+// postUpdate hands the update to the root useg-update unit. The web service is
+// sandboxed and unprivileged, so a request file is all it can write.
+func (s *Server) postUpdate() error {
+	return os.WriteFile(filepath.Join(s.cfg.DataDir, "update.request"),
+		[]byte(strconv.FormatInt(time.Now().Unix(), 10)), 0o600)
 }
 
 func (s *Server) postCaps(r *http.Request) error {
