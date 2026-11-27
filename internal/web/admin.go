@@ -98,6 +98,7 @@ type adminData struct {
 	DeviceCount  int
 	PersonCount  int
 	BlockedCount int
+	OnlineCount  int
 
 	CycleDaysLeft int
 	Allocated     int64
@@ -337,6 +338,9 @@ func (s *Server) adminData(r *http.Request, flash, errMsg string) (*adminData, e
 		}
 		if row.BlockReason != "" {
 			d.BlockedCount++
+		}
+		if dv.IP != "" {
+			d.OnlineCount++
 		}
 		if dv.Owner != nil {
 			row.OwnerID = *dv.Owner

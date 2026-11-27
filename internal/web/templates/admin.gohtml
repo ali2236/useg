@@ -465,38 +465,96 @@
   </section>
 
   <section class="panel" id="devices" role="tabpanel" aria-labelledby="tab-devices" tabindex="0" hidden>
-  <div class="page-head"><h2>{{T $l "devices.title"}}</h2></div>
-  <div class="card table-wrap">
-  <table class="table">
-    <thead><tr><th scope="col">{{T $l "th.device"}}</th><th scope="col">{{T $l "th.ip"}}</th><th scope="col">{{T $l "th.owner"}}</th><th scope="col">{{T $l "th.usage"}}</th><th scope="col">{{T $l "th.state"}}</th><th scope="col">{{T $l "th.last_used"}}</th></tr></thead>
-    <tbody>
-    {{range .Devices}}
-    <tr{{if .BlockReason}} class="is-blocked"{{end}}>
-      <td>{{deviceName .D}}<div class="muted small">{{if .OwnerName}}{{.OwnerName}}{{else}}{{T $l "devices.guest"}}{{end}} · {{.D.MAC}}{{if .D.BindSource}} · {{.D.BindSource}}{{end}}</div></td>
-      <td class="num">{{.D.IP}}</td>
-      <td>
-        <form method="post" action="/admin/device" class="row">
-          <input type="hidden" name="mac" value="{{.D.MAC}}">
-          <input class="input input-sm" name="label" value="{{.D.Label}}" placeholder="{{T $l "devices.label_ph"}}" style="width:120px">
-          <button class="btn btn-sm btn-secondary" name="action" value="label">{{T $l "devices.rename"}}</button>
-          {{$owner := .OwnerID}}
-          <select class="select input-sm" name="person">
-            <option value="0"{{if eq $owner 0}} selected{{end}}>{{T $l "devices.guest"}}</option>
-            {{range $.Persons}}<option value="{{.P.ID}}"{{if eq .P.ID $owner}} selected{{end}}>{{.P.Name}}</option>{{end}}
-          </select>
-          <button class="btn btn-sm btn-secondary" name="action" value="bind">{{T $l "devices.bind"}}</button>
-          <button class="btn btn-sm btn-secondary" name="action" value="unbind">{{T $l "devices.unbind"}}</button>
-          {{if .BlockReason}}<button class="btn btn-sm btn-secondary" name="action" value="unblock">{{T $l "devices.unblock"}}</button>{{else}}<button class="btn btn-sm btn-danger" name="action" value="block">{{T $l "devices.block"}}</button>{{end}}
-          <button class="btn btn-sm btn-danger" name="action" value="delete" onclick="return confirm('{{T $l "devices.delete_confirm"}}')">{{T $l "devices.delete"}}</button>
-        </form>
-      </td>
-      <td class="num">{{bytes .Used $l}}</td>
-      <td>{{if .BlockReason}}<span class="badge badge-danger">{{reason $l .BlockReason}}</span>{{else}}<span class="badge badge-neutral">{{T $l "devices.ok"}}</span>{{end}}</td>
-      <td class="num">{{if .LastUsed}}{{.LastUsed}}{{else}}—{{end}}</td>
-    </tr>
+  <div class="stack">
+    <div class="page-head">
+      <h2>{{T $l "devices.title"}}</h2>
+      <span class="muted small">{{digits (len .Devices) $l}} {{T $l "devices.count"}} · {{digits .OnlineCount $l}} {{T $l "devices.online"}} · {{digits .BlockedCount $l}} {{T $l "devices.blocked"}}</span>
+    </div>
+
+    {{if .Devices}}
+    <div class="dev-tools">
+      <input class="input input-sm dev-search" id="dev-search" type="search" placeholder="{{T $l "devices.search_ph"}}" aria-label="{{T $l "devices.search_ph"}}">
+      <div class="chips" role="group" aria-label="{{T $l "devices.filter"}}">
+        <button class="chip is-active" type="button" data-filter="all" aria-pressed="true">{{T $l "devices.all"}} <span class="num" data-count="all"></span></button>
+        <button class="chip" type="button" data-filter="online" aria-pressed="false">{{T $l "devices.online"}} <span class="num" data-count="online"></span></button>
+        <button class="chip" type="button" data-filter="guest" aria-pressed="false">{{T $l "devices.guest"}} <span class="num" data-count="guest"></span></button>
+        <button class="chip" type="button" data-filter="blocked" aria-pressed="false">{{T $l "devices.blocked"}} <span class="num" data-count="blocked"></span></button>
+      </div>
+    </div>
+
+    <div class="dev-list dev-list--admin" data-dev-list>
+      {{range .Devices}}
+      {{$owner := .OwnerID}}
+      <div class="dev{{if .BlockReason}} is-blocked{{end}}" data-dev data-online="{{if .D.IP}}1{{else}}0{{end}}" data-guest="{{if .OwnerName}}0{{else}}1{{end}}" data-blocked="{{if .BlockReason}}1{{else}}0{{end}}">
+        <span class="dev-icon" aria-hidden="true">
+          <svg class="icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="12" rx="2"/><path d="M8 20h8M12 16v4"/></svg>
+          <span class="dev-dot{{if .BlockReason}} is-off{{else if .D.IP}} is-on{{end}}"></span>
+        </span>
+
+        <div class="dev-main">
+          <span class="dev-name-wrap">
+            <span class="dev-name">{{deviceName .D}}</span>
+            <button class="icon-btn" type="button" data-rename aria-label="{{T $l "devices.edit_name"}}" title="{{T $l "devices.edit_name"}}">
+              <svg class="icon" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>
+            </button>
+            <form method="post" action="/admin/device" class="rename-form" hidden>
+              <input type="hidden" name="mac" value="{{.D.MAC}}">
+              <input type="hidden" name="action" value="label">
+              <input class="input input-sm rename-input" name="label" value="{{.D.Label}}" placeholder="{{deviceName .D}}" aria-label="{{T $l "devices.label_ph"}}" required>
+              <button class="btn btn-sm btn-primary btn-icon" aria-label="{{T $l "devices.rename"}}" title="{{T $l "devices.rename"}}">
+                <svg class="icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="m5 12 5 5L20 7"/></svg>
+              </button>
+              <button class="btn btn-sm btn-secondary btn-icon" type="button" data-cancel aria-label="{{T $l "devices.cancel"}}" title="{{T $l "devices.cancel"}}">
+                <svg class="icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M6 6l12 12M18 6 6 18"/></svg>
+              </button>
+            </form>
+          </span>
+          <span class="badge badge-neutral">{{if .OwnerName}}{{.OwnerName}}{{else}}{{T $l "devices.guest"}}{{end}}</span>
+          {{if .BlockReason}}<span class="badge badge-danger">{{reason $l .BlockReason}}</span>{{end}}
+          <span class="dev-sub muted small">
+            {{if .D.IP}}<span class="ltr num">{{.D.IP}}</span> · {{end}}<span class="ltr num">{{.D.MAC}}</span>{{if .D.BindSource}} · {{.D.BindSource}}{{end}}{{if .LastUsed}} · {{T $l "devices.last_used"}} <span class="num">{{.LastUsed}}</span>{{end}}
+          </span>
+        </div>
+
+        <span class="dev-used num">{{bytes .Used $l}}</span>
+
+        <details class="menu">
+          <summary class="btn btn-sm btn-secondary btn-icon" aria-expanded="false" aria-label="{{T $l "devices.manage"}}" title="{{T $l "devices.manage"}}">
+            <svg class="icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 7h8M18 7h2M4 17h4M12 17h8M4 12h10"/><circle cx="14" cy="7" r="2"/><circle cx="10" cy="12" r="2"/><circle cx="10" cy="17" r="2"/></svg>
+          </summary>
+          <div class="menu-panel">
+            <form method="post" action="/admin/device" class="menu-form">
+              <input type="hidden" name="mac" value="{{.D.MAC}}">
+              <input type="hidden" name="action" value="bind">
+              <label class="field">
+                <span class="field-label">{{T $l "th.owner"}}</span>
+                <select class="select input-sm" name="person" onchange="this.form.submit()">
+                  <option value="0"{{if eq $owner 0}} selected{{end}}>{{T $l "devices.guest"}}</option>
+                  {{range $.Persons}}<option value="{{.P.ID}}"{{if eq .P.ID $owner}} selected{{end}}>{{.P.Name}}</option>{{end}}
+                </select>
+              </label>
+              <p class="muted small m-0">{{T $l "devices.owner_hint"}}</p>
+            </form>
+            <form method="post" action="/admin/device" class="menu-actions">
+              <input type="hidden" name="mac" value="{{.D.MAC}}">
+              {{if .BlockReason}}<button class="btn btn-sm btn-secondary" name="action" value="unblock">{{T $l "devices.unblock"}}</button>{{else}}<button class="btn btn-sm btn-secondary" name="action" value="block">{{T $l "devices.block"}}</button>{{end}}
+              <button class="btn btn-sm btn-danger" name="action" value="delete" onclick="return confirm('{{T $l "devices.delete_confirm"}}')">{{T $l "devices.delete"}}</button>
+            </form>
+          </div>
+        </details>
+      </div>
+      {{end}}
+    </div>
+    <p class="muted small" data-dev-empty hidden>{{T $l "devices.no_match"}}</p>
+    {{else}}
+    <div class="card empty-state">
+      <span class="empty-state-icon" aria-hidden="true">
+        <svg class="icon" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="12" rx="2"/><path d="M8 20h8M12 16v4"/></svg>
+      </span>
+      <strong>{{T $l "devices.empty"}}</strong>
+      <span class="muted small">{{T $l "devices.empty_hint"}}</span>
+    </div>
     {{end}}
-    </tbody>
-  </table>
   </div>
   </section>
 
@@ -672,6 +730,101 @@
       if (e.key === 'ArrowUp' || e.key === 'ArrowLeft') { e.preventDefault(); tabs[(i - 1 + tabs.length) % tabs.length].focus(); }
     });
   });
+})();
+
+(() => {
+  // Device row menus: a fixed-position panel placed from the trigger's rect, so
+  // it is never clipped by the list and flips up near the bottom of the screen.
+  const menus = [...document.querySelectorAll('.dev-list--admin .menu')];
+  const closeMenus = () => menus.forEach(m => { m.open = false; });
+  menus.forEach(m => {
+    const trigger = m.querySelector('summary');
+    const panel = m.querySelector('.menu-panel');
+    trigger.addEventListener('click', e => {
+      e.preventDefault();
+      const willOpen = !m.open;
+      closeMenus();
+      m.open = willOpen;
+      trigger.setAttribute('aria-expanded', willOpen ? 'true' : 'false');
+      if (!willOpen) return;
+      const r = trigger.getBoundingClientRect();
+      const w = panel.offsetWidth, h = panel.offsetHeight;
+      const below = window.innerHeight - r.bottom;
+      const top = below > h + 12 ? r.bottom + 6 : Math.max(8, r.top - h - 6);
+      const left = Math.min(Math.max(8, r.left + r.width / 2 - w / 2), window.innerWidth - w - 8);
+      panel.style.top = `${top}px`;
+      panel.style.left = `${left}px`;
+      const first = panel.querySelector('select');
+      if (first) first.focus({ preventScroll: true });
+    });
+  });
+  document.addEventListener('click', e => {
+    const open = menus.find(m => m.open);
+    if (open && !open.contains(e.target)) closeMenus();
+  });
+  document.addEventListener('keydown', e => {
+    if (e.key !== 'Escape') return;
+    const open = menus.find(m => m.open);
+    if (!open) return;
+    open.open = false;
+    open.querySelector('summary').focus();
+  });
+  window.addEventListener('scroll', closeMenus, true);
+  window.addEventListener('resize', closeMenus);
+
+  // Inline rename: the pencil swaps the name for an input + save/cancel.
+  document.querySelectorAll('[data-rename]').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const wrap = btn.closest('.dev-name-wrap');
+      wrap.classList.add('is-editing');
+      const input = wrap.querySelector('.rename-input');
+      input.focus();
+      input.select();
+    });
+  });
+  document.querySelectorAll('.rename-form').forEach(form => {
+    const wrap = form.closest('.dev-name-wrap');
+    form.querySelector('[data-cancel]').addEventListener('click', () => wrap.classList.remove('is-editing'));
+    form.addEventListener('keydown', e => {
+      if (e.key === 'Escape') { e.stopPropagation(); wrap.classList.remove('is-editing'); }
+    });
+  });
+
+  // Client-side filter: search text + one of the chips.
+  const list = document.querySelector('[data-dev-list]');
+  if (!list) return;
+  const rows = [...list.querySelectorAll('[data-dev]')];
+  const search = document.getElementById('dev-search');
+  const chips = [...document.querySelectorAll('[data-filter]')];
+  const empty = document.querySelector('[data-dev-empty]');
+  let filter = 'all';
+  const match = (row, f) => f === 'all'
+    || (f === 'online' && row.dataset.online === '1')
+    || (f === 'guest' && row.dataset.guest === '1')
+    || (f === 'blocked' && row.dataset.blocked === '1');
+  const apply = () => {
+    const q = search.value.trim().toLowerCase();
+    let shown = 0;
+    rows.forEach(row => {
+      const on = match(row, filter) && (!q || row.textContent.toLowerCase().includes(q));
+      row.hidden = !on;
+      if (on) shown++;
+    });
+    empty.hidden = shown > 0;
+  };
+  chips.forEach(chip => {
+    chip.querySelector('[data-count]').textContent = rows.filter(row => match(row, chip.dataset.filter)).length;
+    chip.addEventListener('click', () => {
+      filter = chip.dataset.filter;
+      chips.forEach(c => {
+        const on = c === chip;
+        c.classList.toggle('is-active', on);
+        c.setAttribute('aria-pressed', on ? 'true' : 'false');
+      });
+      apply();
+    });
+  });
+  search.addEventListener('input', apply);
 })();
 </script>
 </body>
