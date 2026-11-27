@@ -56,6 +56,26 @@
     {{end}}
   </section>
 
+  {{if .PersonName}}
+  <section class="portal-section">
+    <h2 class="portal-h2">{{T .Lang "portal.daily_title"}}</h2>
+    <p class="quota-sub">{{T .Lang "portal.today"}}: {{bytes .DailyUsed .Lang}}{{if .HasDaily}} / {{bytes .DailyCap .Lang}}{{else}} · {{T .Lang "portal.daily_no_limit"}}{{end}}</p>
+    <ul class="dev-list">
+      {{range .DailyHistory}}
+      <li class="dev">
+        <span class="dev-name">{{.Label}}{{if .Today}} <span class="badge badge-info">{{T $.Lang "portal.today"}}</span>{{end}}</span>
+        <span class="dev-used num">{{bytes .Bytes $.Lang}}</span>
+      </li>
+      {{end}}
+    </ul>
+    <form method="post" action="/daily-limit" class="row">
+      <input class="input input-sm" type="number" inputmode="decimal" step="any" min="0" name="gb" value="{{.DailyLimitGB}}" placeholder="{{T .Lang "portal.daily_no_limit"}}">
+      <button class="btn btn-sm btn-primary">{{T .Lang "portal.daily_save"}}</button>
+    </form>
+    <p class="small muted">{{T .Lang "portal.daily_hint"}}</p>
+  </section>
+  {{end}}
+
   <section class="portal-section">
     <h2 class="portal-h2">{{T .Lang "portal.devices"}}</h2>
     <ul class="dev-list">

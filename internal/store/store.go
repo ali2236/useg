@@ -140,20 +140,24 @@ type Person struct {
 	Name        string
 	Weight      float64
 	CapOverride *int64
+	DailyLimit  *int64 // bytes; nil = no daily limit
 	Enabled     bool
 	SubToken    string
 	CreatedAt   int64
 	Locale      string
 }
 
-const personCols = `id, name, weight, cap_override, enabled, sub_token, created_at, locale`
+const personCols = `id, name, weight, cap_override, daily_limit, enabled, sub_token, created_at, locale`
 
 func scanPerson(sc interface{ Scan(...any) error }) (Person, error) {
 	var p Person
-	var capOv sql.NullInt64
-	err := sc.Scan(&p.ID, &p.Name, &p.Weight, &capOv, &p.Enabled, &p.SubToken, &p.CreatedAt, &p.Locale)
+	var capOv, daily sql.NullInt64
+	err := sc.Scan(&p.ID, &p.Name, &p.Weight, &capOv, &daily, &p.Enabled, &p.SubToken, &p.CreatedAt, &p.Locale)
 	if capOv.Valid {
 		p.CapOverride = &capOv.Int64
+	}
+	if daily.Valid {
+		p.DailyLimit = &daily.Int64
 	}
 	return p, err
 }
@@ -206,6 +210,12 @@ func (d *DB) RotateSubToken(id int64) (string, error) {
 	}
 	_, err = d.Exec(`UPDATE person SET sub_token = ? WHERE id = ?`, tok, id)
 	return tok, err
+}
+
+// SetDailyLimit stores a person's self-serve daily cap; nil clears it.
+func (d *DB) SetDailyLimit(id int64, limit *int64) error {
+	_, err := d.Exec(`UPDATE person SET daily_limit = ? WHERE id = ?`, limit, id)
+	return err
 }
 
 // ---- devices ----------------------------------------------------------------
@@ -355,6 +365,7 @@ func (d *DB) DeleteDevice(mac string) error {
 	return d.tx(func(tx *sql.Tx) error {
 		for _, q := range []string{
 			`DELETE FROM usage WHERE subject = ?`,
+			`DELETE FROM daily_usage WHERE subject = ?`,
 			`DELETE FROM block WHERE subject = ?`,
 			`DELETE FROM event WHERE subject = ?`,
 		} {

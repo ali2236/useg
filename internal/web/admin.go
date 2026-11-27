@@ -25,6 +25,8 @@ type personRow struct {
 	Allocated    int64
 	Remaining    int64
 	CapGB        string
+	DailyUsed    int64
+	DailyLimitGB string
 	SubURL       string
 	Pct          int
 	AllocPct     int
@@ -167,7 +169,7 @@ func (s *Server) adminData(r *http.Request, flash, errMsg string) (*adminData, e
 	if err != nil {
 		return nil, err
 	}
-	in, err := quota.Gather(s.db, period)
+	in, err := quota.Gather(s.db, period, s.loc)
 	if err != nil {
 		return nil, err
 	}
@@ -225,9 +227,13 @@ func (s *Server) adminData(r *http.Request, flash, errMsg string) (*adminData, e
 		subj := quota.PersonSubject(p.ID)
 		st := dec.Subjects[subj]
 		row := personRow{P: p, Status: st, Used: st.Used, Cap: st.Cap,
+			DailyUsed: st.DailyUsed,
 			Allocated: in.Allocations[p.ID], SubURL: s.subURL(r, p)}
 		if p.CapOverride != nil {
 			row.CapGB = fmt.Sprintf("%.2f", float64(*p.CapOverride)/1e9)
+		}
+		if st.DailyCap > 0 {
+			row.DailyLimitGB = strconv.FormatFloat(float64(st.DailyCap)/1e9, 'f', -1, 64)
 		}
 		if st.Cap > 0 {
 			row.Remaining = st.Cap - st.Used
@@ -561,6 +567,7 @@ func (s *Server) PortalHandler() http.Handler {
 	mux.Handle("/assets/", assetHandler())
 	mux.HandleFunc("/sub/", s.sub)
 	mux.HandleFunc("/transfer", s.transfer)
+	mux.HandleFunc("/daily-limit", s.dailyLimit)
 	mux.HandleFunc("/", s.portal)
 	return mux
 }
@@ -591,6 +598,8 @@ func (s *Server) admin(w http.ResponseWriter, r *http.Request) {
 	switch r.URL.Path {
 	case "/admin/person/new":
 		err = s.postNewPerson(r)
+	case "/admin/person/daily-limit":
+		err = s.postDailyLimit(r)
 	case "/admin/device":
 		err = s.postDevice(r)
 	case "/admin/route":
@@ -659,12 +668,41 @@ func (s *Server) admin(w http.ResponseWriter, r *http.Request) {
 		case "label":
 			flash = "devices.renamed_ok"
 		}
+	case "/admin/person/daily-limit":
+		flash = "persons.daily_ok"
 	}
 	http.Redirect(w, r, "/admin?ok="+urlQuery(flash), http.StatusSeeOther)
 }
 
 func urlQuery(s string) string {
 	return strings.ReplaceAll(strings.TrimSpace(s), " ", "+")
+}
+
+// postDailyLimit sets or clears a person's self-serve daily cap; the portal
+// exposes the same column to the person themselves.
+func (s *Server) postDailyLimit(r *http.Request) error {
+	pid, err := strconv.ParseInt(r.FormValue("person"), 10, 64)
+	if err != nil || pid <= 0 {
+		return fmt.Errorf("choose a person")
+	}
+	if _, err := s.db.Person(pid); err != nil {
+		return fmt.Errorf("unknown person")
+	}
+	b, err := formGB(r, "gb")
+	if err != nil {
+		return err
+	}
+	if b != nil && *b <= 0 {
+		return fmt.Errorf("daily limit must be positive")
+	}
+	if err := s.db.SetDailyLimit(pid, b); err != nil {
+		return err
+	}
+	detail := "cleared"
+	if b != nil {
+		detail = fmt.Sprintf("%.2f GB", float64(*b)/1e9)
+	}
+	return s.db.AddEvent("daily_limit", quota.PersonSubject(pid), detail)
 }
 
 func (s *Server) postNewPerson(r *http.Request) error {
@@ -756,7 +794,7 @@ func (s *Server) postDataSync(r *http.Request) error {
 	if period.AllocMode != "manual" {
 		return fmt.Errorf("start a data cycle first")
 	}
-	in, err := quota.Gather(s.db, period)
+	in, err := quota.Gather(s.db, period, s.loc)
 	if err != nil {
 		return err
 	}
@@ -1149,7 +1187,7 @@ func (s *Server) postDataUnallocateRow(r *http.Request) error {
 	if err != nil {
 		return err
 	}
-	in, err := quota.Gather(s.db, period)
+	in, err := quota.Gather(s.db, period, s.loc)
 	if err != nil {
 		return err
 	}
@@ -1310,7 +1348,7 @@ func (s *Server) apiSummary(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
-	in, err := quota.Gather(s.db, period)
+	in, err := quota.Gather(s.db, period, s.loc)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return

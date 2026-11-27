@@ -105,7 +105,7 @@ func (s *Server) withPending(in *quota.Input) {
 	if s.pending == nil {
 		return
 	}
-	quota.MergePending(in.Totals, s.pending())
+	quota.MergePending(in, s.pending())
 }
 
 // ---- portal -----------------------------------------------------------------
@@ -122,6 +122,12 @@ type portalPerson struct {
 	Name string
 	Used int64
 	You  bool
+}
+
+type dailyRow struct {
+	Label string
+	Bytes int64
+	Today bool
 }
 
 type portalPage struct {
@@ -141,6 +147,11 @@ type portalPage struct {
 	DaysLeft     int
 	Devices      []portalDevice
 	People       []portalPerson
+	DailyUsed    int64
+	DailyCap     int64
+	HasDaily     bool
+	DailyLimitGB string
+	DailyHistory []dailyRow
 	PeriodEnd    string
 	Transferable bool
 	Notice       string
@@ -149,6 +160,7 @@ type portalPage struct {
 func reasonText(l, reason string) string {
 	key := map[string]string{
 		quota.ReasonQuota:     "reason.quota",
+		quota.ReasonDaily:     "reason.daily",
 		quota.ReasonGuest:     "reason.guest",
 		quota.ReasonGuestPool: "reason.guest_pool",
 		quota.ReasonHousehold: "reason.household",
@@ -215,7 +227,7 @@ func (s *Server) portal(w http.ResponseWriter, r *http.Request) {
 	ip := clientIP(r)
 	dev, err := s.db.DeviceByIP(ip)
 	if err == nil {
-		in, gerr := quota.Gather(s.db, period)
+		in, gerr := quota.Gather(s.db, period, s.loc)
 		if gerr != nil {
 			http.Error(w, "database error", http.StatusInternalServerError)
 			return
@@ -234,6 +246,12 @@ func (s *Server) portal(w http.ResponseWriter, r *http.Request) {
 		if st, ok := dec.Subjects[subj]; ok {
 			page.Used = st.Used
 			page.Cap = st.Cap
+			page.DailyUsed = st.DailyUsed
+			page.DailyCap = st.DailyCap
+			page.HasDaily = st.DailyCap > 0
+			if page.HasDaily {
+				page.DailyLimitGB = strconv.FormatFloat(float64(st.DailyCap)/1e9, 'f', -1, 64)
+			}
 			page.Unlimited = st.Cap < 0
 			if !page.Unlimited {
 				page.Remaining = st.Cap - st.Used
@@ -288,16 +306,106 @@ func (s *Server) portal(w http.ResponseWriter, r *http.Request) {
 			})
 			// Only a metered person with something left has data to give away.
 			page.Transferable = page.PersonName != "" && !page.Unlimited && page.Remaining > 0
+			// A daily cap is personal, so only a bound person sees or sets it.
+			page.DailyHistory = s.dailyHistory(in, *dev.Owner, page.DailyUsed, l.code)
 		}
 	}
 	if r.URL.Query().Get("ok") == "transfer" {
 		page.Notice = T(l.code, "transfer.ok")
+	}
+	if r.URL.Query().Get("ok") == "daily" {
+		page.Notice = T(l.code, "portal.daily_saved")
 	}
 	// Whole days left, rounded up: the last partial day still counts as today.
 	if left := period.EndUTC - now.Unix(); left > 0 {
 		page.DaysLeft = int((left + 86399) / 86400)
 	}
 	s.render(w, "portal.gohtml", page)
+}
+
+// dailyHistory is the person's last seven local days, oldest first. Today is
+// overridden with the live counter so the list agrees with the engine.
+func (s *Server) dailyHistory(in quota.Input, personID, today int64, lang string) []dailyRow {
+	subs := map[string]bool{quota.PersonSubject(personID): true}
+	for _, d := range in.Devices {
+		if d.Owner != nil && *d.Owner == personID {
+			subs[quota.DeviceSubject(d.MAC)] = true
+		}
+	}
+	now := time.Now().In(s.loc)
+	days := make([]time.Time, 0, 7)
+	for i := 6; i >= 0; i-- {
+		days = append(days, now.AddDate(0, 0, -i))
+	}
+	byDay := map[string]float64{}
+	if rows, err := s.db.DailyUsageSince(days[0].Format("2006-01-02")); err == nil {
+		for _, r := range rows {
+			if subs[r.Subject] {
+				byDay[r.Day] += r.Charged
+			}
+		}
+	}
+	out := make([]dailyRow, 0, len(days))
+	for i, d := range days {
+		label := jalali.Format(d, "month-day", s.loc)
+		if lang == "fa" {
+			label = persianDigits(label)
+		}
+		used := store.ChargedBytes(byDay[d.Format("2006-01-02")])
+		if i == len(days)-1 {
+			used = today
+		}
+		out = append(out, dailyRow{Label: label, Bytes: used, Today: i == len(days)-1})
+	}
+	return out
+}
+
+// dailyLimit lets a bound person set or clear their own daily cap. Guests have
+// no person, so they have no daily limit to set.
+func (s *Server) dailyLimit(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Redirect(w, r, "/", http.StatusSeeOther)
+		return
+	}
+	if !sameOrigin(r) {
+		http.Error(w, "cross-origin daily limit", http.StatusForbidden)
+		return
+	}
+	dev, err := s.db.DeviceByIP(clientIP(r))
+	if err != nil || dev.Owner == nil {
+		http.Redirect(w, r, "/", http.StatusSeeOther)
+		return
+	}
+	person, err := s.db.Person(*dev.Owner)
+	if err != nil || !person.Enabled {
+		http.Redirect(w, r, "/", http.StatusSeeOther)
+		return
+	}
+	b, err := formGB(r, "gb")
+	switch {
+	case err != nil:
+		// A malformed field changes nothing and reports no false success.
+		http.Redirect(w, r, "/", http.StatusSeeOther)
+		return
+	case b == nil:
+		// An empty field clears the cap.
+		err = s.db.SetDailyLimit(person.ID, nil)
+		if err == nil {
+			_ = s.db.AddEvent("daily_limit", quota.PersonSubject(person.ID), "cleared")
+		}
+	case *b <= 0:
+		// Zero or negative is not a cap; keep the old one.
+	default:
+		err = s.db.SetDailyLimit(person.ID, b)
+		if err == nil {
+			_ = s.db.AddEvent("daily_limit", quota.PersonSubject(person.ID),
+				fmt.Sprintf("%.2f GB", float64(*b)/1e9))
+		}
+	}
+	if err != nil {
+		s.log.Error("set daily limit", "person", person.ID, "err", err)
+	}
+	http.Redirect(w, r, "/?ok=daily", http.StatusSeeOther)
 }
 
 type transferPage struct {
@@ -324,7 +432,7 @@ func remainingOf(st quota.Status) int64 {
 // personStatus is the same number the portal and the quota engine see, with the
 // accountant's unflushed buckets folded in.
 func (s *Server) personStatus(period *store.Period, personID int64) (quota.Status, error) {
-	in, err := quota.Gather(s.db, period)
+	in, err := quota.Gather(s.db, period, s.loc)
 	if err != nil {
 		return quota.Status{}, err
 	}
@@ -475,7 +583,7 @@ func (s *Server) sub(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "database error", http.StatusInternalServerError)
 		return
 	}
-	in, err := quota.Gather(s.db, period)
+	in, err := quota.Gather(s.db, period, s.loc)
 	if err != nil {
 		http.Error(w, "database error", http.StatusInternalServerError)
 		return

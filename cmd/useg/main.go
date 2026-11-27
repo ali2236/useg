@@ -149,7 +149,7 @@ func cmdServer(args []string) error {
 	}
 
 	clash := singbox.NewClient(cfg.ClashURL)
-	acct := account.New(db, clash, log, cfg.LanCIDR, cfg.BoxIP)
+	acct := account.New(db, clash, log, cfg.LanCIDR, cfg.BoxIP, cfg.Location())
 
 	build := func() ([]byte, error) {
 		persons, err := db.Persons()

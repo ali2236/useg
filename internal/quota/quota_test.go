@@ -21,6 +21,7 @@ func base() Input {
 			{MAC: "bb:bb:bb:bb:bb:bb", IP: "192.168.1.11"},
 		},
 		Totals:           map[string]store.Totals{},
+		Daily:            map[string]float64{},
 		Blocks:           map[string]store.Block{},
 		PoolCharged:      ptr(100 * gb),
 		GuestPool:        5 * gb,
@@ -252,5 +253,59 @@ func TestUsageFollowsThePersonAcrossDevices(t *testing.T) {
 	}
 	if !st.Blocked {
 		t.Fatal("five devices must buy no extra bytes")
+	}
+}
+
+func TestDailyLimitBlocksPersonOnly(t *testing.T) {
+	in := base()
+	in.Persons[0].DailyLimit = ptr(2 * gb)
+	in.Daily["dev:aa:aa:aa:aa:aa:aa"] = 2.5 * float64(gb)
+	dec := Compute(in)
+	st := dec.Subjects[PersonSubject(1)]
+	if !st.Blocked || st.Reason != ReasonDaily {
+		t.Fatalf("person status = %+v, want blocked by the daily limit", st)
+	}
+	if st.DailyUsed != int64(2.5e9) || st.DailyCap != 2*gb {
+		t.Fatalf("daily used/cap = %d/%d", st.DailyUsed, st.DailyCap)
+	}
+	if dec.Blocked["aa:aa:aa:aa:aa:aa"] != ReasonDaily {
+		t.Fatal("the person's device must be cut off")
+	}
+	if dec.Blocked["bb:bb:bb:bb:bb:bb"] != "" {
+		t.Fatal("a guest must never inherit a person's daily limit")
+	}
+}
+
+func TestDailyLimitUnderCapStaysOnline(t *testing.T) {
+	in := base()
+	in.Persons[0].DailyLimit = ptr(2 * gb)
+	in.Daily["person:1"] = 1 * float64(gb)
+	dec := Compute(in)
+	if st := dec.Subjects[PersonSubject(1)]; st.Blocked {
+		t.Fatalf("person blocked under the daily cap: %+v", st)
+	}
+}
+
+func TestCapsOffIgnoresDailyLimit(t *testing.T) {
+	in := base()
+	in.CapsOff = true
+	in.Persons[0].DailyLimit = ptr(1 * gb)
+	in.Daily["person:1"] = 9 * float64(gb)
+	dec := Compute(in)
+	if dec.Subjects[PersonSubject(1)].Blocked {
+		t.Fatal("caps_off must disable daily limits too")
+	}
+}
+
+func TestMergePendingFeedsTodaysDailyCounter(t *testing.T) {
+	in := base()
+	MergePending(&in, map[string]store.Totals{
+		"dev:aa:aa:aa:aa:aa:aa": {Charged: 0.5 * float64(gb), Raw: 1},
+	})
+	if in.Daily["dev:aa:aa:aa:aa:aa:aa"] != 0.5*float64(gb) {
+		t.Fatalf("daily pending = %v", in.Daily)
+	}
+	if in.Totals["dev:aa:aa:aa:aa:aa:aa"].Charged != 0.5*float64(gb) {
+		t.Fatal("monthly pending was not merged")
 	}
 }

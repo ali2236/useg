@@ -42,7 +42,7 @@ func TestPortalTransferMovesShare(t *testing.T) {
 		t.Fatalf("transfer net = %v", net)
 	}
 
-	in, err := quota.Gather(db, period)
+	in, err := quota.Gather(db, period, cfg.Location())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -123,7 +123,7 @@ func TestPortalTransferMovesManualAllocation(t *testing.T) {
 		t.Fatalf("allocations after transfer = %v", allocs)
 	}
 
-	in, err := quota.Gather(db, period)
+	in, err := quota.Gather(db, period, cfg.Location())
 	if err != nil {
 		t.Fatal(err)
 	}

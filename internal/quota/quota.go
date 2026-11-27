@@ -14,6 +14,7 @@ import (
 
 const (
 	ReasonQuota     = "monthly quota exhausted"
+	ReasonDaily     = "daily limit reached"
 	ReasonGuest     = "guest allowance exhausted"
 	ReasonGuestPool = "guest pool exhausted"
 	ReasonHousehold = "household raw ceiling reached"
@@ -21,18 +22,21 @@ const (
 )
 
 type Status struct {
-	Subject string `json:"subject"`
-	Used    int64  `json:"used"`
-	Cap     int64  `json:"cap"` // -1 = unmetered / unlimited
-	Blocked bool   `json:"blocked"`
-	Reason  string `json:"reason,omitempty"`
-	Guest   bool   `json:"guest"`
+	Subject   string `json:"subject"`
+	Used      int64  `json:"used"`
+	Cap       int64  `json:"cap"` // -1 = unmetered / unlimited
+	DailyUsed int64  `json:"daily_used"`
+	DailyCap  int64  `json:"daily_cap"` // -1 = no daily limit
+	Blocked   bool   `json:"blocked"`
+	Reason    string `json:"reason,omitempty"`
+	Guest     bool   `json:"guest"`
 }
 
 type Input struct {
 	Persons          []store.Person
 	Devices          []store.Device
 	Totals           map[string]store.Totals
+	Daily            map[string]float64 // subject -> charged bytes today
 	Allocations      map[int64]int64
 	Blocks           map[string]store.Block
 	Now              int64
@@ -43,6 +47,7 @@ type Input struct {
 	RawCeiling       *int64
 	Manual           bool            // explicit per-person allocations instead of weights
 	TransferNet      map[int64]int64 // received minus sent, weight periods only
+	CapsOff          bool            // admin kill switch: meter only, never block
 }
 
 type Decision struct {
@@ -83,10 +88,15 @@ func Compute(in Input) Decision {
 		}
 		subj := PersonSubject(p.ID)
 		used := store.ChargedBytes(in.Totals[subj].Charged)
+		daily := store.ChargedBytes(in.Daily[subj])
 		for _, mac := range owned[p.ID] {
 			used += store.ChargedBytes(in.Totals[DeviceSubject(mac)].Charged)
+			daily += store.ChargedBytes(in.Daily[DeviceSubject(mac)])
 		}
-		st := Status{Subject: subj, Used: used, Cap: -1}
+		st := Status{Subject: subj, Used: used, Cap: -1, DailyUsed: daily, DailyCap: -1}
+		if p.DailyLimit != nil && *p.DailyLimit > 0 {
+			st.DailyCap = *p.DailyLimit
+		}
 		if in.Manual {
 			st.Cap = in.Allocations[p.ID]
 		} else if in.PoolCharged != nil && totalWeight > 0 {
@@ -107,6 +117,11 @@ func Compute(in Input) Decision {
 			if st.Used >= st.Cap {
 				st.Blocked, st.Reason = true, ReasonQuota
 			}
+		}
+		// A daily cap is a self-serve pause, independent of the billing period.
+		// It names the reason even when the monthly share is also gone.
+		if !in.CapsOff && st.DailyCap > 0 && st.DailyUsed >= st.DailyCap {
+			st.Blocked, st.Reason = true, ReasonDaily
 		}
 		if b, ok := in.Blocks[subj]; ok && blockActive(b, in.Now) {
 			st.Blocked, st.Reason = true, ReasonManual
@@ -134,7 +149,7 @@ func Compute(in Input) Decision {
 			continue
 		}
 		subj := DeviceSubject(d.MAC)
-		st := Status{Subject: subj, Used: store.ChargedBytes(in.Totals[subj].Charged), Cap: in.GuestDeviceBytes, Guest: true}
+		st := Status{Subject: subj, Used: store.ChargedBytes(in.Totals[subj].Charged), Cap: in.GuestDeviceBytes, DailyCap: -1, Guest: true}
 		if poolLeft >= 0 && (st.Cap < 0 || st.Used+poolLeft < st.Cap) {
 			st.Cap = st.Used + poolLeft
 		}
@@ -209,8 +224,9 @@ func GuestPoolBytes(s map[string]string) int64 {
 	return int64(gb * 1e9)
 }
 
-// Gather loads everything Compute needs for one period.
-func Gather(db *store.DB, period *store.Period) (Input, error) {
+// Gather loads everything Compute needs for one period. loc is the household
+// timezone: the daily caps and the history reset at local midnight.
+func Gather(db *store.DB, period *store.Period, loc *time.Location) (Input, error) {
 	in := Input{
 		PoolCharged:      period.PoolCharged,
 		GuestPool:        deref(period.GuestPool),
@@ -218,6 +234,7 @@ func Gather(db *store.DB, period *store.Period) (Input, error) {
 		Now:              time.Now().Unix(),
 		Manual:           period.AllocMode == "manual",
 		Blocks:           map[string]store.Block{},
+		Daily:            map[string]float64{},
 		GuestDeviceBytes: 0,
 	}
 	var err error
@@ -228,6 +245,10 @@ func Gather(db *store.DB, period *store.Period) (Input, error) {
 		return in, err
 	}
 	if in.Totals, err = db.SubjectTotals(period.ID); err != nil {
+		return in, err
+	}
+	day := time.Now().In(loc).Format("2006-01-02")
+	if in.Daily, err = db.DailySubjectTotals(day); err != nil {
 		return in, err
 	}
 	if in.Allocations, err = db.Allocations(period.ID); err != nil {
@@ -263,6 +284,7 @@ func Gather(db *store.DB, period *store.Period) (Input, error) {
 	// The admin kill switch keeps metering but disables every cap, including
 	// the period snapshot, so turning it back on restores the old limits.
 	if settings["caps_off"] == "1" {
+		in.CapsOff = true
 		in.PoolCharged = nil
 		in.RawCeiling = nil
 		in.GuestPool = 0
@@ -296,14 +318,19 @@ func NewEngine(db *store.DB, nft *enforce.Nft, cfg *config.Config, log *slog.Log
 		prev: map[string]string{}}
 }
 
-// MergePending folds unflushed buckets into the totals, so enforcement sees
-// traffic within one tick instead of one flush window.
-func MergePending(totals map[string]store.Totals, pending map[string]store.Totals) {
+// MergePending folds unflushed buckets into the totals and today's daily
+// counter, so enforcement sees traffic within one tick instead of one flush
+// window.
+func MergePending(in *Input, pending map[string]store.Totals) {
+	if in.Daily == nil {
+		in.Daily = map[string]float64{}
+	}
 	for subj, p := range pending {
-		t := totals[subj]
+		t := in.Totals[subj]
 		t.Charged += p.Charged
 		t.Raw += p.Raw
-		totals[subj] = t
+		in.Totals[subj] = t
+		in.Daily[subj] += p.Charged
 	}
 }
 
@@ -314,12 +341,12 @@ func (e *Engine) Tick(now time.Time) error {
 	}
 	e.expire(now)
 
-	in, err := Gather(e.db, period)
+	in, err := Gather(e.db, period, e.cfg.Location())
 	if err != nil {
 		return err
 	}
 	if e.pending != nil {
-		MergePending(in.Totals, e.pending())
+		MergePending(&in, e.pending())
 	}
 	dec := Compute(in)
 

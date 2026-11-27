@@ -56,6 +56,7 @@ type Accountant struct {
 	log   *slog.Logger
 	lan   netip.Prefix
 	box   netip.Addr
+	loc   *time.Location
 
 	mu        sync.Mutex
 	periodID  int64
@@ -69,11 +70,13 @@ type Accountant struct {
 	lastLoud  time.Time
 }
 
-func New(db *store.DB, clash *singbox.Client, log *slog.Logger, lanCIDR, boxIP string) *Accountant {
+func New(db *store.DB, clash *singbox.Client, log *slog.Logger, lanCIDR, boxIP string,
+	loc *time.Location) *Accountant {
 	a := &Accountant{
 		db:       db,
 		clash:    clash,
 		log:      log,
+		loc:      loc,
 		flows:    map[string]*flow{},
 		buckets:  map[bucketKey]*bucket{},
 		bindSeen: map[string]time.Time{},
@@ -439,6 +442,12 @@ func (a *Accountant) flushLocked(now time.Time) {
 	if err := a.db.UpsertUsage(a.periodID, rows); err != nil {
 		a.log.Error("flush usage", "err", err)
 		return
+	}
+	// The same rows feed the daily history. A flush that straddles midnight
+	// lands entirely on the new day; the window is only 5 minutes.
+	day := now.In(a.loc).Format("2006-01-02")
+	if err := a.db.UpsertDailyUsage(day, rows); err != nil {
+		a.log.Error("flush daily usage", "err", err)
 	}
 	if len(used) > 0 {
 		macs := make([]string, 0, len(used))

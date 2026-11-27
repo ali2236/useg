@@ -419,7 +419,7 @@
 
   <div class="card table-wrap">
   <table class="table">
-    <thead><tr><th scope="col">{{T $l "th.name"}}</th><th scope="col">{{T $l "th.usage"}}</th><th scope="col">{{T $l "th.subscription"}}</th></tr></thead>
+    <thead><tr><th scope="col">{{T $l "th.name"}}</th><th scope="col">{{T $l "th.usage"}}</th><th scope="col">{{T $l "th.daily_limit"}}</th><th scope="col">{{T $l "th.subscription"}}</th></tr></thead>
     <tbody>
     {{range .Persons}}
     <tr{{if .Status.Blocked}} class="is-blocked"{{end}}>
@@ -435,12 +435,21 @@
         </div>
         {{end}}
       </td>
+      <td>
+        <form method="post" action="/admin/person/daily-limit" class="row">
+          <input type="hidden" name="person" value="{{.P.ID}}">
+          <input class="input input-sm" type="number" inputmode="decimal" step="any" min="0" name="gb" value="{{.DailyLimitGB}}" placeholder="{{T $l "persons.no_limit"}}" style="width:92px">
+          <button class="btn btn-sm btn-secondary">{{T $l "persons.save"}}</button>
+        </form>
+        <span class="muted small">{{T $l "persons.today"}} {{bytes .DailyUsed $l}}</span>
+      </td>
       <td><a href="{{.SubURL}}">{{T $l "persons.sub"}}</a></td>
     </tr>
     {{range .DeviceRows}}
     <tr class="sub-row">
       <td>{{deviceName .D}} <span class="muted small">{{.D.MAC}}</span></td>
       <td class="num">{{bytes .Used $l}}</td>
+      <td></td>
       <td>
         <form method="post" action="/admin/device">
           <input type="hidden" name="mac" value="{{.D.MAC}}">
@@ -451,7 +460,7 @@
     {{end}}
     {{end}}
     <tr>
-      <td colspan="3">
+      <td colspan="4">
         <form method="post" action="/admin/person/new" class="row">
           <input class="input input-sm" name="name" placeholder="{{T $l "persons.new_ph"}}" style="min-width:180px" required>
           <button class="btn btn-sm btn-primary">{{T $l "persons.add"}}</button>

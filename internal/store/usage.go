@@ -51,6 +51,75 @@ func (d *DB) UpsertUsage(periodID int64, rows []UsageRow) error {
 	})
 }
 
+// UpsertDailyUsage records the same flush rows per local day, so a person can
+// see and cap one day without waiting for the billing period to turn over.
+func (d *DB) UpsertDailyUsage(day string, rows []UsageRow) error {
+	if len(rows) == 0 {
+		return nil
+	}
+	return d.tx(func(tx *sql.Tx) error {
+		stmt, err := tx.Prepare(`INSERT INTO daily_usage(day, subject, charged) VALUES(?, ?, ?)
+			ON CONFLICT(day, subject) DO UPDATE SET
+				charged = daily_usage.charged + excluded.charged`)
+		if err != nil {
+			return err
+		}
+		defer stmt.Close()
+		for _, r := range rows {
+			if _, err := stmt.Exec(day, r.Subject, r.Charged); err != nil {
+				return err
+			}
+		}
+		return nil
+	})
+}
+
+// DailySubjectTotals is one day's charged bytes per subject.
+func (d *DB) DailySubjectTotals(day string) (map[string]float64, error) {
+	rows, err := d.Query(`SELECT subject, SUM(charged) FROM daily_usage
+		WHERE day = ? GROUP BY subject`, day)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := map[string]float64{}
+	for rows.Next() {
+		var s string
+		var v float64
+		if err := rows.Scan(&s, &v); err != nil {
+			return nil, err
+		}
+		out[s] = v
+	}
+	return out, rows.Err()
+}
+
+type DailyUsage struct {
+	Day     string
+	Subject string
+	Charged float64
+}
+
+// DailyUsageSince returns per-subject daily rows from fromDay (YYYY-MM-DD)
+// onward, for the portal's history.
+func (d *DB) DailyUsageSince(fromDay string) ([]DailyUsage, error) {
+	rows, err := d.Query(`SELECT day, subject, SUM(charged) FROM daily_usage
+		WHERE day >= ? GROUP BY day, subject ORDER BY day`, fromDay)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []DailyUsage
+	for rows.Next() {
+		var r DailyUsage
+		if err := rows.Scan(&r.Day, &r.Subject, &r.Charged); err != nil {
+			return nil, err
+		}
+		out = append(out, r)
+	}
+	return out, rows.Err()
+}
+
 type Totals struct {
 	Charged float64
 	Raw     int64

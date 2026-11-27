@@ -22,6 +22,8 @@ func TestMigrateFreshSchema(t *testing.T) {
 		`SELECT period_id, person_id, bytes FROM allocation`,
 		`SELECT weight FROM rate`,
 		`SELECT domain, network FROM domestic_site`,
+		`SELECT daily_limit FROM person`,
+		`SELECT day, subject, charged FROM daily_usage`,
 	} {
 		rows, err := db.Query(q)
 		if err != nil {
