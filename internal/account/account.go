@@ -66,6 +66,7 @@ type Accountant struct {
 	st        state
 	bindSeen  map[string]time.Time
 	lastErr   time.Time
+	lastLoud  time.Time
 }
 
 func New(db *store.DB, clash *singbox.Client, log *slog.Logger, lanCIDR, boxIP string) *Accountant {
@@ -310,6 +311,14 @@ func (a *Accountant) Tick(now time.Time) {
 			a.log.Warn("clash api unavailable", "err", err)
 		}
 		return
+	}
+	// A home LAN keeps hundreds of flows at most. Thousands means something is
+	// opening flows far faster than it closes them, and it is exactly what makes
+	// this full-table snapshot expensive; say so instead of silently burning a
+	// core.
+	if len(conns) > 2000 && now.Sub(a.lastLoud) >= time.Minute {
+		a.lastLoud = now
+		a.log.Warn("clash api: unusually many live connections", "n", len(conns))
 	}
 	a.mu.Lock()
 	defer a.mu.Unlock()

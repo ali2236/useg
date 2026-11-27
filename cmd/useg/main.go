@@ -10,6 +10,7 @@ import (
 	"flag"
 	"fmt"
 	"log/slog"
+	"net"
 	"net/http"
 	"os"
 	"os/signal"
@@ -21,6 +22,7 @@ import (
 	"useg/internal/enforce"
 	"useg/internal/jalali"
 	"useg/internal/leases"
+	"useg/internal/names"
 	"useg/internal/quota"
 	"useg/internal/singbox"
 	"useg/internal/store"
@@ -181,6 +183,7 @@ func cmdServer(args []string) error {
 
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
+	go namesLoop(ctx, db, cfg, log)
 
 	periodTick := func(now time.Time) {
 		p, err := db.EnsurePeriod(now, cfg.Location())
@@ -232,6 +235,37 @@ func cmdServer(args []string) error {
 			if i%60 == 0 {
 				periodTick(now)
 			}
+		}
+	}
+}
+
+// namesLoop fills device.name with what devices advertise over mDNS. Best
+// effort: many phones never answer, and their DHCP hostname remains the name.
+func namesLoop(ctx context.Context, db *store.DB, cfg *config.Config, log *slog.Logger) {
+	iface, err := net.InterfaceByName(cfg.Iface)
+	if err != nil {
+		log.Debug("mdns: no interface", "iface", cfg.Iface, "err", err)
+		return
+	}
+	select {
+	case <-ctx.Done():
+		return
+	case <-time.After(30 * time.Second):
+	}
+	tick := time.NewTicker(10 * time.Minute)
+	defer tick.Stop()
+	for {
+		found := names.Discover(ctx, iface)
+		for ip, n := range found {
+			if err := db.SetDeviceName(ip, n); err != nil {
+				log.Error("mdns: store name", "ip", ip, "err", err)
+			}
+		}
+		log.Debug("mdns names", "found", len(found))
+		select {
+		case <-ctx.Done():
+			return
+		case <-tick.C:
 		}
 	}
 }

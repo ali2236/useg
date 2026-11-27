@@ -220,6 +220,7 @@ if ! testout=$(dnsmasq --test ${CONFIG_DIR:+-7 $CONFIG_DIR} ${DNSMASQ_OPTS:-} 2>
 fi
 
 install -m 0644 deploy/useg.service /etc/systemd/system/useg.service
+install -D -m 0644 deploy/dnsmasq-restart.conf /etc/systemd/system/dnsmasq.service.d/network-online.conf
 install -m 0755 deploy/useg-backup.sh /usr/local/bin/useg-backup.sh
 install -m 0644 deploy/useg-backup.service /etc/systemd/system/useg-backup.service
 install -m 0644 deploy/useg-backup.timer /etc/systemd/system/useg-backup.timer

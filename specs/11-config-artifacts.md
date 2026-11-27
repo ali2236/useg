@@ -12,6 +12,10 @@ table inet useg {
     chain prerouting {
         type filter hook prerouting priority mangle; policy accept;
 
+        # TPROXY re-injects the marked packet through the policy route; it
+        # arrives here again on lo and must be delivered, not matched again
+        iifname "lo" accept
+
         # the box itself is always reachable (DNS, portal, subscription, VLESS)
         ip daddr 192.168.100.2 accept
 

@@ -26,6 +26,8 @@ quota loop, portal, subscription endpoint, admin UI).
 - **Attributes traffic from DHCP.** dnsmasq leases give IP → MAC → device. A
   device becomes a person's when it fetches that person's subscription or opens a
   VLESS connection from its IP; everything else is a guest with its own allowance.
+  Devices are named by their mDNS name when they advertise one (`Ali’s MacBook
+  Pro`), otherwise by the DHCP hostname, otherwise by MAC.
 - **Bills in Jalali months.** Periods come from a fixed anchor day, not from a
   calendar library's idea of a month. Rating is a route × class multiplier, so a
   domestic class can cost less than the default.

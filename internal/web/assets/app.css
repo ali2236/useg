@@ -254,6 +254,8 @@ a:focus-visible, button:focus-visible, [role="tab"]:focus-visible {
 .btn-danger:hover { background: var(--danger-muted); }
 .btn-sm { padding: 7px 12px; font-size: .75rem; }
 .btn-block { width: 100%; }
+.btn-icon { padding: 7px; line-height: 1; }
+.icon { width: 14px; height: 14px; flex: none; }
 
 /* ---- forms -------------------------------------------------------------- */
 

@@ -392,7 +392,7 @@ func TestAdminDataCycle(t *testing.T) {
 	}
 
 	body := do(h, "GET", "/admin?lang=en", "10.66.0.3:5000", nil, cookie).Body.String()
-	for _, want := range []string{`id="tab-data"`, "Data cycle", "Data settings", "Allocate equally", "Allocate by weight", "Grant (GB)", "Start a new cycle", `id="data-charts"`, "Allocation by person", "Usage by person", `width: 36%`} {
+	for _, want := range []string{`id="tab-data"`, "Data cycle", "Data settings", "Allocate equally", "Allocate by weight", "Add / remove (GB)", "Start a new cycle", `id="data-charts"`, "Allocation by person", "Usage by person", `width: 36%`} {
 		if !strings.Contains(body, want) {
 			t.Errorf("data tab missing %q", want)
 		}
@@ -403,21 +403,50 @@ func TestAdminDataCycle(t *testing.T) {
 		}
 	}
 
-	// A grant adds GB to one person from the unallocated pool.
+	// + gives one person GB from the unallocated pool.
 	do(h, "POST", "/admin/data/add", "10.66.0.3:5000", url.Values{"gb": {"2"}}, cookie)
-	do(h, "POST", "/admin/data/grant", "10.66.0.3:5000", url.Values{
-		"grant_" + strconv.FormatInt(sara, 10): {"1"},
+	saraKey := "gb_" + strconv.FormatInt(sara, 10)
+	do(h, "POST", "/admin/data/allocate", "10.66.0.3:5000", url.Values{
+		"person": {strconv.FormatInt(sara, 10)}, saraKey: {"1"},
 	}, cookie)
 	allocs, _ = db.Allocations(p.ID)
 	if allocs[sara] != 675e7 {
-		t.Fatalf("grant allocation = %v", allocs)
+		t.Fatalf("allocate = %v", allocs)
 	}
-	// A grant bigger than what is left in the pool is refused.
-	rec := do(h, "POST", "/admin/data/grant", "10.66.0.3:5000", url.Values{
-		"grant_" + strconv.FormatInt(sara, 10): {"100"},
+	// Asking for more than the pool has left gives the rest, not an error.
+	do(h, "POST", "/admin/data/allocate", "10.66.0.3:5000", url.Values{
+		"person": {strconv.FormatInt(sara, 10)}, saraKey: {"100"},
+	}, cookie)
+	allocs, _ = db.Allocations(p.ID)
+	if allocs[sara] != 775e7 {
+		t.Fatalf("allocate should clamp to the unallocated pool, got %v", allocs[sara])
+	}
+	// − can only take back unused data: 4 GB used, so 7.75 GB drops to 4 GB.
+	if err := db.UpsertUsage(p.ID, []store.UsageRow{{
+		Subject: "person:" + strconv.FormatInt(sara, 10), RouteID: 1, ClassID: 1, Charged: 4e9,
+	}}); err != nil {
+		t.Fatal(err)
+	}
+	do(h, "POST", "/admin/data/unallocate", "10.66.0.3:5000", url.Values{
+		"person": {strconv.FormatInt(sara, 10)}, saraKey: {"100"},
+	}, cookie)
+	allocs, _ = db.Allocations(p.ID)
+	if allocs[sara] != 4e9 {
+		t.Fatalf("unallocate should stop at used data, got %v", allocs[sara])
+	}
+	rec := do(h, "POST", "/admin/data/unallocate", "10.66.0.3:5000", url.Values{
+		"person": {strconv.FormatInt(sara, 10)}, saraKey: {"1"},
 	}, cookie)
 	if loc := rec.Header().Get("Location"); !strings.Contains(loc, "err=") {
-		t.Fatalf("over-pool grant redirect = %q", loc)
+		t.Fatalf("unallocate with nothing unused redirect = %q", loc)
+	}
+	// The guest row uses the same controls.
+	do(h, "POST", "/admin/data/allocate", "10.66.0.3:5000", url.Values{
+		"person": {"guest"}, "gb_guest": {"0.5"},
+	}, cookie)
+	p, _ = db.CurrentPeriod(time.Now().Unix())
+	if p.GuestPool == nil || *p.GuestPool != 625e7 {
+		t.Fatalf("guest allocate = %v", p.GuestPool)
 	}
 }
 
@@ -463,8 +492,8 @@ func TestAdminMonthlyDataSettings(t *testing.T) {
 			t.Errorf("monthly data tab missing %q", want)
 		}
 	}
-	if strings.Contains(body, "Grant (GB)") {
-		t.Error("grant column should only show inside a data cycle")
+	if strings.Contains(body, "Add / remove (GB)") {
+		t.Error("allocate controls should only show inside a data cycle")
 	}
 }
 

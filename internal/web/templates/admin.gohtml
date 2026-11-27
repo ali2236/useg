@@ -117,7 +117,7 @@
         {{range .Connected}}
           <div class="list-row list-row--dev">
             <div class="list-name">
-              <strong>{{if .D.Hostname}}{{.D.Hostname}}{{else}}{{.D.MAC}}{{end}}</strong>
+              <strong>{{deviceName .D}}</strong>
               <span class="muted small">{{.OwnerName}}{{if .D.IP}} · <span class="ltr num">{{.D.IP}}</span>{{end}}</span>
             </div>
             <div class="num small">{{bytes .Used $l}}</div>
@@ -138,7 +138,7 @@
         {{range .Guests}}
           <div class="list-row list-row--dev{{if .BlockReason}} is-blocked{{end}}">
             <div class="list-name">
-              <strong>{{if .D.Hostname}}{{.D.Hostname}}{{else}}{{.D.MAC}}{{end}}</strong>
+              <strong>{{deviceName .D}}</strong>
               <span class="muted small">{{if .D.IP}}<span class="ltr num">{{.D.IP}}</span>{{end}}{{if .LastSeen}}{{if .D.IP}} · {{end}}{{.LastSeen}}{{end}}</span>
               {{if gt .GuestCap 0}}<div class="progress" role="progressbar" aria-valuenow="{{.GuestPct}}" aria-valuemin="0" aria-valuemax="100"><div class="progress-fill{{if ge .Used .GuestCap}} is-danger{{end}}" style="width: {{.GuestPct}}%"></div></div>{{end}}
             </div>
@@ -299,11 +299,11 @@
       <div>
         <strong>{{T $l "data.weight"}}</strong>
         <div class="muted small">{{T $l "data.weight_hint"}}</div>
-        <div class="muted small">{{T $l "data.grant_hint"}}</div>
+        <div class="muted small">{{T $l "data.adjust_hint"}}</div>
       </div>
-      <div class="table-wrap">
+        <div class="table-wrap">
       <table class="table">
-        <thead><tr><th scope="col">{{T $l "th.name"}}</th><th scope="col">{{T $l "data.allocated"}}</th><th scope="col">{{T $l "th.used"}}</th><th scope="col">{{T $l "th.remaining"}}</th><th scope="col">{{T $l "data.weight_col"}}</th><th scope="col">{{T $l "data.grant_col"}}</th></tr></thead>
+        <thead><tr><th scope="col">{{T $l "th.name"}}</th><th scope="col">{{T $l "data.allocated"}}</th><th scope="col">{{T $l "th.used"}}</th><th scope="col">{{T $l "th.remaining"}}</th><th scope="col">{{T $l "data.weight_col"}}</th><th scope="col">{{T $l "data.adjust_col"}}</th></tr></thead>
         <tbody>
         {{range .Persons}}
         <tr>
@@ -312,7 +312,13 @@
           <td class="num">{{bytes .Used $l}}</td>
           <td class="num">{{if lt .Status.Cap 0}}∞{{else}}{{bytes .Remaining $l}}{{end}}</td>
           <td><input class="input input-sm" type="number" step="0.01" min="0" name="weight_{{.P.ID}}" value="0" aria-label="{{T $l "data.weight_col"}} {{.P.Name}}" style="width:80px"></td>
-          <td><input class="input input-sm" type="number" step="0.01" min="0" name="grant_{{.P.ID}}" placeholder="GB" aria-label="{{T $l "data.grant_col"}} {{.P.Name}}" style="width:90px"></td>
+          <td>
+            <span class="row" style="flex-wrap:nowrap;gap:4px">
+              <button class="btn btn-sm btn-secondary btn-icon" type="submit" name="person" value="{{.P.ID}}" formaction="/admin/data/unallocate" aria-label="{{T $l "data.unallocate"}} {{.P.Name}}" title="{{T $l "data.unallocate"}}"><svg class="icon" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M3 8h10"/></svg></button>
+              <input class="input input-sm" type="number" step="0.01" min="0" name="gb_{{.P.ID}}" placeholder="GB" aria-label="{{T $l "data.adjust_col"}} {{.P.Name}}" style="width:90px">
+              <button class="btn btn-sm btn-secondary btn-icon" type="submit" name="person" value="{{.P.ID}}" formaction="/admin/data/allocate" aria-label="{{T $l "data.allocate"}} {{.P.Name}}" title="{{T $l "data.allocate"}}"><svg class="icon" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M8 3v10M3 8h10"/></svg></button>
+            </span>
+          </td>
         </tr>
         {{end}}
         <tr>
@@ -321,14 +327,19 @@
           <td class="num">{{bytes .GuestUsed $l}}</td>
           <td class="num">{{bytes .GuestRemaining $l}}</td>
           <td><input class="input input-sm" type="number" step="0.01" min="0" name="weight_guest" value="0" aria-label="{{T $l "data.weight_col"}} {{T $l "data.guests"}}" style="width:80px"></td>
-          <td><input class="input input-sm" type="number" step="0.01" min="0" name="grant_guest" placeholder="GB" aria-label="{{T $l "data.grant_col"}} {{T $l "data.guests"}}" style="width:90px"></td>
+          <td>
+            <span class="row" style="flex-wrap:nowrap;gap:4px">
+              <button class="btn btn-sm btn-secondary btn-icon" type="submit" name="person" value="guest" formaction="/admin/data/unallocate" aria-label="{{T $l "data.unallocate"}} {{T $l "data.guests"}}" title="{{T $l "data.unallocate"}}"><svg class="icon" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M3 8h10"/></svg></button>
+              <input class="input input-sm" type="number" step="0.01" min="0" name="gb_guest" placeholder="GB" aria-label="{{T $l "data.adjust_col"}} {{T $l "data.guests"}}" style="width:90px">
+              <button class="btn btn-sm btn-secondary btn-icon" type="submit" name="person" value="guest" formaction="/admin/data/allocate" aria-label="{{T $l "data.allocate"}} {{T $l "data.guests"}}" title="{{T $l "data.allocate"}}"><svg class="icon" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M8 3v10M3 8h10"/></svg></button>
+            </span>
+          </td>
         </tr>
         </tbody>
       </table>
       </div>
       <div class="row">
         <button class="btn btn-sm btn-primary">{{T $l "data.weight_btn"}}</button>
-        <button class="btn btn-sm btn-secondary" formaction="/admin/data/grant">{{T $l "data.grant_btn"}}</button>
       </div>
     </form>
     {{end}}
@@ -439,7 +450,7 @@
     <tbody>
     {{range .Devices}}
     <tr{{if .BlockReason}} class="is-blocked"{{end}}>
-      <td>{{.D.Hostname}}<div class="muted small">{{.D.MAC}}{{if .D.BindSource}} · {{.D.BindSource}}{{end}}</div></td>
+      <td>{{deviceName .D}}<div class="muted small">{{.D.MAC}}{{if .D.BindSource}} · {{.D.BindSource}}{{end}}</div></td>
       <td class="num">{{.D.IP}}</td>
       <td>
         <form method="post" action="/admin/device" class="row">

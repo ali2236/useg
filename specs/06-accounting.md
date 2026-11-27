@@ -50,8 +50,11 @@ broadcast, link-local and traffic to the box are accepted before TPROXY and
 never reach the proxy; the accountant also drops any flow whose destination is
 local, so those bytes can never be charged even if the ruleset is stale.
 
-**Drift check, not enforcement:** nftables keeps per-source-IP raw counters.
-Once a night the agent compares them with the sum of accounted raw bytes per
-device and reports the gap. If it exceeds 2%, the UI says so. These counters are
-never used to charge or block — they cannot be weighted, so they cannot be the
-truth.
+**Drift check, not enforcement:** nftables keeps per-source-IP raw counters
+(upload in prerouting, download in postrouting, because the proxy replies carry
+the server's address and never re-enter prerouting). Once a night the agent
+compares them with the sum of accounted raw bytes per device and reports the
+gap. If it exceeds 2%, the UI says so. These counters are never used to charge
+or block — they cannot be weighted, so they cannot be the truth. They also see
+lane A only: a lane B tunnel terminates on the box and never crosses these
+hooks.

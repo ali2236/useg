@@ -361,6 +361,22 @@ func (d *DB) Allocations(periodID int64) (map[int64]int64, error) {
 	return out, rows.Err()
 }
 
+// ReduceAllocation returns unused data to the unallocated pool by lowering one
+// person's share, or the guest share when personID is 0.
+func (d *DB) ReduceAllocation(periodID, personID, bytes int64) error {
+	if bytes <= 0 {
+		return fmt.Errorf("data amount must be positive")
+	}
+	if personID == 0 {
+		_, err := d.Exec(`UPDATE period SET guest_pool = MAX(COALESCE(guest_pool, 0) - ?, 0)
+			WHERE id = ? AND alloc_mode = 'manual'`, bytes, periodID)
+		return err
+	}
+	_, err := d.Exec(`UPDATE allocation SET bytes = MAX(bytes - ?, 0)
+		WHERE period_id = ? AND person_id = ?`, bytes, periodID, personID)
+	return err
+}
+
 // ApplyAllocation tops up person shares and the guest share in one transaction.
 func (d *DB) ApplyAllocation(periodID int64, persons map[int64]int64, guest int64) error {
 	return d.tx(func(tx *sql.Tx) error {

@@ -3,6 +3,7 @@
 | Piece | Choice | Rationale |
 |---|---|---|
 | DHCP + DNS | `dnsmasq` | leases give MAC↔IP↔hostname for free; one config file |
+| Device names | `hashicorp/mdns` (pinned) | Apple/Google devices publish the owner-set name only on mDNS; DHCP is the fallback |
 | Data plane | `sing-box`, pinned | TPROXY, VLESS multi-user, Clash API in one process |
 | Agent, UI, sub server | one Go binary | netlink/nftables, JSON, embedded static UI, single deployable |
 | Storage | SQLite | one file, trivial backup, ample at this scale |

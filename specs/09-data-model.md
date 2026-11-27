@@ -4,7 +4,7 @@ SQLite in WAL mode, one file, backed up by copying.
 
 ```sql
 person(id, name, weight, cap_override, enabled, sub_token, created_at, locale)
-device(mac PK, ip, hostname, first_seen, last_seen,
+device(mac PK, ip, hostname, name, first_seen, last_seen,
        owner_person_id, bound_at, bind_source)
 
 route(id, name, kind, upstream_json, allow_all, enabled)
@@ -31,6 +31,10 @@ Notes:
 - `usage` is upserted per 5-minute flush, not per poll. The poll only touches
   memory; the DB sees ~288 writes per subject per day.
 - `mac` is stored normalized (`aa:bb:cc:dd:ee:ff`).
+- `hostname` is DHCP option 12 as the client sent it; `name` is what the device
+  advertises over mDNS. The UI shows `name`, then a prettified `hostname`, then
+  the MAC. A name is never invented: when a phone advertises neither, the MAC
+  stays.
 - Every quota-affecting change writes an `event` row. The audit log is the
   same table.
 - Schema migrations are numbered SQL files applied at startup.

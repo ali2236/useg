@@ -11,6 +11,9 @@ func TestRulesetKeepsTheInvariants(t *testing.T) {
 		TProxyPort: 7895, PortalPort: 80, Iface: "eth0",
 	})
 	must := []string{
+		// TPROXY re-injects marked packets on lo; they must be accepted there
+		// or the same packet is proxied in an infinite loop
+		`iifname "lo" accept`,
 		// traffic to the box itself must never be intercepted, or a VLESS
 		// listener would capture its own clients in a loop
 		"ip daddr @box4 accept",
@@ -29,6 +32,7 @@ func TestRulesetKeepsTheInvariants(t *testing.T) {
 		"redirect to :80",
 		"update @devbytes { ip saddr }",
 		"update @devbytes { ip daddr }",
+		"ip daddr @lan4 ip saddr != @box4 update @devbytes { ip daddr }",
 	}
 	for _, m := range must {
 		if !strings.Contains(got, m) {
@@ -47,9 +51,10 @@ func TestRulesetKeepsTheInvariants(t *testing.T) {
 		t.Error("masquerade belongs in the nat table, which bypass keeps")
 	}
 
-	// Local traffic must be accepted before the proxy counter and the drift
-	// counters, or mDNS is swallowed and local bytes reach the ledger.
+	// Local traffic must be accepted before the proxy rule and the upload
+	// counter, or mDNS is swallowed and local bytes reach the ledger.
 	for _, local := range []string{
+		`iifname "lo" accept`,
 		"ip saddr @lan4 ip daddr @lan4 accept",
 		"ip daddr 224.0.0.0/4 accept",
 		"ip daddr 255.255.255.255 accept",
@@ -59,8 +64,22 @@ func TestRulesetKeepsTheInvariants(t *testing.T) {
 			t.Errorf("%q must precede the tproxy rule", local)
 		}
 		if strings.Index(got, local) > strings.Index(got, "update @devbytes { ip saddr }") {
-			t.Errorf("%q must precede the devbytes counters", local)
+			t.Errorf("%q must precede the upload counter", local)
 		}
+	}
+
+	// The download leg leaves the box as locally generated traffic carrying the
+	// server address, so its counter must live after routing, not in prerouting.
+	pre := strings.Index(got, "chain prerouting")
+	post := strings.Index(got, "chain postrouting")
+	if pre < 0 || post < 0 || post < pre {
+		t.Fatal("ruleset needs a postrouting chain after prerouting")
+	}
+	if strings.Contains(got[pre:post], "update @devbytes { ip daddr }") {
+		t.Error("download bytes cannot be counted in prerouting")
+	}
+	if !strings.Contains(got[post:], "ip daddr @lan4 ip saddr != @box4 update @devbytes { ip daddr }") {
+		t.Error("download counter must exclude the box's own replies")
 	}
 
 	// The local-service rule must come before the block rule, or a blocked

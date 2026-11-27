@@ -569,8 +569,10 @@ func (s *Server) admin(w http.ResponseWriter, r *http.Request) {
 		err = s.postDataAllocate(r, false)
 	case "/admin/data/allocate-weight":
 		err = s.postDataAllocate(r, true)
-	case "/admin/data/grant":
-		err = s.postDataGrant(r)
+	case "/admin/data/allocate":
+		err = s.postDataAllocateRow(r)
+	case "/admin/data/unallocate":
+		err = s.postDataUnallocateRow(r)
 	case "/admin/bypass":
 		err = s.postBypass(r)
 	case "/admin/caps":
@@ -596,8 +598,10 @@ func (s *Server) admin(w http.ResponseWriter, r *http.Request) {
 		flash = "data.added_ok"
 	case "/admin/data/allocate-equal", "/admin/data/allocate-weight":
 		flash = "data.allocated_ok"
-	case "/admin/data/grant":
-		flash = "data.granted_ok"
+	case "/admin/data/allocate":
+		flash = "data.allocated_ok"
+	case "/admin/data/unallocate":
+		flash = "data.unallocated_ok"
 	}
 	http.Redirect(w, r, "/admin?ok="+urlQuery(flash), http.StatusSeeOther)
 }
@@ -909,9 +913,9 @@ func (s *Server) postDataSettings(r *http.Request) error {
 	return s.db.AddEvent("data_settings", subj, "pool updated")
 }
 
-// postDataGrant adds GB to the people (and the guest share) named in the
-// grant column, without touching the other allocations.
-func (s *Server) postDataGrant(r *http.Request) error {
+// postDataAllocateRow gives one person (or the guest share) GB from the
+// unallocated pool, without touching the other allocations.
+func (s *Server) postDataAllocateRow(r *http.Request) error {
 	period, err := s.db.EnsurePeriod(time.Now(), s.loc)
 	if err != nil {
 		return err
@@ -919,29 +923,24 @@ func (s *Server) postDataGrant(r *http.Request) error {
 	if period.AllocMode != "manual" {
 		return fmt.Errorf("start a data cycle first")
 	}
-	persons, err := s.db.Persons()
+	pid, guest, b, err := dataAdjust(r)
 	if err != nil {
 		return err
 	}
-	grants := map[int64]int64{}
-	var guest, total int64
-	for _, p := range persons {
-		b, err := formGB(r, "grant_"+strconv.FormatInt(p.ID, 10))
+	if !guest {
+		persons, err := s.db.Persons()
 		if err != nil {
 			return err
 		}
-		if b != nil && *b > 0 {
-			grants[p.ID] = *b
-			total += *b
+		known := false
+		for _, p := range persons {
+			if p.ID == pid {
+				known = true
+			}
 		}
-	}
-	if b, err := formGB(r, "grant_guest"); err != nil {
-		return err
-	} else if b != nil && *b > 0 {
-		guest, total = *b, total+*b
-	}
-	if total <= 0 {
-		return fmt.Errorf("enter a grant for at least one person")
+		if !known {
+			return fmt.Errorf("unknown person")
+		}
 	}
 	allocated := int64(0)
 	if period.GuestPool != nil {
@@ -951,17 +950,115 @@ func (s *Server) postDataGrant(r *http.Request) error {
 	if err != nil {
 		return err
 	}
-	for _, b := range allocs {
-		allocated += b
+	for _, x := range allocs {
+		allocated += x
 	}
-	if period.PoolCharged != nil && allocated+total > *period.PoolCharged {
-		return fmt.Errorf("grant exceeds the unallocated pool")
+	if period.PoolCharged != nil {
+		headroom := *period.PoolCharged - allocated
+		if headroom <= 0 {
+			return fmt.Errorf("nothing unallocated to allocate")
+		}
+		if b > headroom {
+			b = headroom
+		}
 	}
-	if err := s.db.ApplyAllocation(period.ID, grants, guest); err != nil {
+	if guest {
+		err = s.db.ApplyAllocation(period.ID, nil, b)
+	} else {
+		err = s.db.ApplyAllocation(period.ID, map[int64]int64{pid: b}, 0)
+	}
+	if err != nil {
 		return err
 	}
-	return s.db.AddEvent("data_grant", "period:"+strconv.FormatInt(period.ID, 10),
-		fmt.Sprintf("%.2f GB", float64(total)/1e9))
+	return s.db.AddEvent("data_allocate", dataSubject(pid, guest),
+		fmt.Sprintf("+%.2f GB", float64(b)/1e9))
+}
+
+// postDataUnallocateRow returns a person's (or the guests') unused data to the
+// unallocated pool, never taking back data already consumed.
+func (s *Server) postDataUnallocateRow(r *http.Request) error {
+	period, err := s.db.EnsurePeriod(time.Now(), s.loc)
+	if err != nil {
+		return err
+	}
+	if period.AllocMode != "manual" {
+		return fmt.Errorf("start a data cycle first")
+	}
+	pid, guest, b, err := dataAdjust(r)
+	if err != nil {
+		return err
+	}
+	in, err := quota.Gather(s.db, period)
+	if err != nil {
+		return err
+	}
+	s.withPending(&in)
+	var alloc, used int64
+	if guest {
+		if period.GuestPool != nil {
+			alloc = *period.GuestPool
+		}
+		for _, d := range in.Devices {
+			if d.Owner == nil {
+				used += int64(in.Totals[quota.DeviceSubject(d.MAC)].Charged)
+			}
+		}
+	} else {
+		allocs, err := s.db.Allocations(period.ID)
+		if err != nil {
+			return err
+		}
+		alloc = allocs[pid]
+		used = int64(in.Totals[quota.PersonSubject(pid)].Charged)
+		for _, d := range in.Devices {
+			if d.Owner != nil && *d.Owner == pid {
+				used += int64(in.Totals[quota.DeviceSubject(d.MAC)].Charged)
+			}
+		}
+	}
+	unused := alloc - used
+	if unused <= 0 {
+		return fmt.Errorf("nothing unused to unallocate")
+	}
+	if b > unused {
+		b = unused
+	}
+	if err := s.db.ReduceAllocation(period.ID, pid, b); err != nil {
+		return err
+	}
+	return s.db.AddEvent("data_unallocate", dataSubject(pid, guest),
+		fmt.Sprintf("-%.2f GB", float64(b)/1e9))
+}
+
+// dataAdjust reads the clicked row's person (or "guest") and its GB field.
+func dataAdjust(r *http.Request) (int64, bool, int64, error) {
+	v := r.FormValue("person")
+	guest := v == "guest"
+	key := "gb_guest"
+	var pid int64
+	if !guest {
+		var err error
+		pid, err = strconv.ParseInt(v, 10, 64)
+		if err != nil || pid <= 0 {
+			return 0, false, 0, fmt.Errorf("choose a person")
+		}
+		key = "gb_" + strconv.FormatInt(pid, 10)
+	}
+	b, err := formGB(r, key)
+	if err != nil {
+		return 0, false, 0, err
+	}
+	if b == nil || *b <= 0 {
+		return 0, false, 0, fmt.Errorf("enter a GB amount")
+	}
+	return pid, guest, *b, nil
+}
+
+func dataSubject(pid int64, guest bool) string {
+	if guest {
+		return "guest"
+	}
+	return quota.PersonSubject(pid)
 }
 
 // formGB reads a GB field; an empty field means "unset".

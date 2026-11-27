@@ -139,6 +139,24 @@ func reasonText(l, reason string) string {
 	return T(l, key)
 }
 
+// deviceLabel is what a human sees: the mDNS-advertised name, then the DHCP
+// hostname with its separators opened up, then the MAC.
+func deviceLabel(d store.Device) string {
+	if n := strings.TrimSpace(d.Name); n != "" {
+		return n
+	}
+	if h := hostLabel(d.Hostname); h != "" {
+		return h
+	}
+	return d.MAC
+}
+
+func hostLabel(host string) string {
+	h := strings.TrimSuffix(strings.TrimSpace(host), ".local")
+	h = strings.NewReplacer("-", " ", "_", " ").Replace(h)
+	return strings.Join(strings.Fields(h), " ")
+}
+
 func (s *Server) portal(w http.ResponseWriter, r *http.Request) {
 	if r.URL.Path != "/" {
 		http.NotFound(w, r)
@@ -167,10 +185,7 @@ func (s *Server) portal(w http.ResponseWriter, r *http.Request) {
 		dec := quota.Compute(in)
 		page.Known = true
 		page.MAC = dev.MAC
-		page.DeviceName = dev.Hostname
-		if page.DeviceName == "" {
-			page.DeviceName = dev.MAC
-		}
+		page.DeviceName = deviceLabel(dev)
 		page.Guest = dev.Owner == nil
 		subj := quota.DeviceSubject(dev.MAC)
 		if dev.Owner != nil {

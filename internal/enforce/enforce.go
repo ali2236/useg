@@ -46,6 +46,11 @@ func Ruleset(o Options) string {
   chain prerouting {
     type filter hook prerouting priority mangle; policy accept;
 
+    # TPROXY re-injects the marked packet through the policy route, so it
+    # arrives here a second time on lo and must be delivered, not matched
+    # again. Without this the same packet is tproxied forever.
+    iifname "lo" accept
+
     # never intercept traffic addressed to the box itself: the portal, DNS,
     # the admin UI and every VLESS listener live there
     ip daddr @box4 accept
@@ -58,11 +63,9 @@ func Ruleset(o Options) string {
     ip daddr 255.255.255.255 accept
     ip daddr 169.254.0.0/16 accept
 
-    # raw per-device counters, both directions: drift report only, never used
-    # to charge or block. Local destinations were accepted above, so these
-    # count WAN <-> LAN only.
+    # per-device upload counters: drift report only, never used to charge or
+    # block. Local destinations were accepted above, so this is WAN only.
     ip saddr @lan4 update @devbytes { ip saddr }
-    ip daddr @lan4 update @devbytes { ip daddr }
 
     # a blocked browser asking for any site gets the portal instead
     ip saddr @blocked4 tcp dport 80 accept
@@ -80,6 +83,15 @@ func Ruleset(o Options) string {
   chain dstnat {
     type nat hook prerouting priority dstnat; policy accept;
     ip saddr @blocked4 tcp dport 80 redirect to :%d
+  }
+
+  # The proxy answers the client with the destination's address as source, so
+  # the download leg never passes through prerouting: it is locally generated.
+  # Count it after routing instead. The box's own replies to clients (portal,
+  # DNS) carry the box address and are not WAN bytes.
+  chain postrouting {
+    type filter hook postrouting priority mangle; policy accept;
+    ip daddr @lan4 ip saddr != @box4 update @devbytes { ip daddr }
   }
 
   chain forward {
@@ -140,6 +152,10 @@ func (n *Nft) Apply() error {
 		return err
 	}
 	n.setupRouting()
+	// nft -f appends to an existing table; drop them first so a restart does
+	// not stack duplicate rules (the kernel happily runs every copy).
+	_ = n.run("", "delete", "table", "inet", "usegnat")
+	_ = n.run("", "delete", "table", "inet", "useg")
 	if err := n.run(NatRuleset(n.opt), "-f", "-"); err != nil {
 		return fmt.Errorf("nat table: %w", err)
 	}
@@ -147,6 +163,7 @@ func (n *Nft) Apply() error {
 		return err
 	}
 	n.applied = true
+	n.blocked = map[string]bool{}
 	n.log.Info("nftables ruleset applied", "lan", n.opt.LanCIDR)
 	return nil
 }
@@ -217,7 +234,8 @@ func (n *Nft) SetBlocked(ips []string) error {
 }
 
 // DevBytes reads the per-device nft counters. Drift check only: these cannot be
-// weighted, so they can never be the truth.
+// weighted, so they can never be the truth. They see lane A only — a lane B
+// tunnel terminates on the box and never crosses these hooks.
 func (n *Nft) DevBytes() (map[string]int64, error) {
 	if !n.enabled {
 		return nil, fmt.Errorf("enforcement disabled")

@@ -214,6 +214,7 @@ type Device struct {
 	MAC        string
 	IP         string
 	Hostname   string
+	Name       string
 	FirstSeen  int64
 	LastSeen   int64
 	Owner      *int64
@@ -221,13 +222,13 @@ type Device struct {
 	BindSource string
 }
 
-const deviceCols = `mac, COALESCE(ip,''), COALESCE(hostname,''), COALESCE(first_seen,0),
-	COALESCE(last_seen,0), owner_person_id, bound_at, COALESCE(bind_source,'')`
+const deviceCols = `mac, COALESCE(ip,''), COALESCE(hostname,''), COALESCE(name,''),
+	COALESCE(first_seen,0), COALESCE(last_seen,0), owner_person_id, bound_at, COALESCE(bind_source,'')`
 
 func scanDevice(sc interface{ Scan(...any) error }) (Device, error) {
 	var dv Device
 	var owner, bound sql.NullInt64
-	err := sc.Scan(&dv.MAC, &dv.IP, &dv.Hostname, &dv.FirstSeen, &dv.LastSeen, &owner, &bound, &dv.BindSource)
+	err := sc.Scan(&dv.MAC, &dv.IP, &dv.Hostname, &dv.Name, &dv.FirstSeen, &dv.LastSeen, &owner, &bound, &dv.BindSource)
 	if owner.Valid {
 		dv.Owner = &owner.Int64
 	}
@@ -281,6 +282,18 @@ func (d *DB) UpsertLease(mac, ip, hostname string, now int64) error {
 				last_seen = excluded.last_seen`, mac, ip, hostname, now, now)
 		return err
 	})
+}
+
+// SetDeviceName records the name a device advertises over mDNS. The update is
+// keyed by the current IP, so an address recycled between discovery and this
+// write cannot rename another device.
+func (d *DB) SetDeviceName(ip, name string) error {
+	if ip == "" || name == "" {
+		return nil
+	}
+	_, err := d.Exec(`UPDATE device SET name = ?
+		WHERE ip = ? AND (name IS NULL OR name <> ?)`, name, ip, name)
+	return err
 }
 
 func (d *DB) Bind(mac string, personID int64, source string, now int64) error {
