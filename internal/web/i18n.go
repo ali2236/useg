@@ -25,6 +25,7 @@ func pickLang(r string) lang {
 
 var messages = map[string][2]string{
 	"portal.title":     {"دستگاه من", "My device"},
+	"portal.refresh":   {"به‌روزرسانی", "Refresh"},
 	"portal.hello":     {"سلام", "Hello"},
 	"portal.online":    {"متصل", "Connected"},
 	"portal.offline":   {"قطع", "Disconnected"},

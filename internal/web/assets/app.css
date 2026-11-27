@@ -370,6 +370,7 @@ code {
 
 .portal-bar { display: flex; align-items: center; justify-content: space-between; margin-bottom: 26px; }
 .portal-brand { font-size: 1.0625rem; font-weight: 700; letter-spacing: -.02em; }
+.portal-actions { display: flex; align-items: center; gap: 8px; }
 
 .status-pill {
   display: inline-flex; align-items: center; gap: 6px;

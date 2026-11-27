@@ -247,6 +247,9 @@ func TestPortalIsInstallable(t *testing.T) {
 	if !strings.Contains(body, `rel="manifest"`) || !strings.Contains(body, `rel="apple-touch-icon"`) {
 		t.Error("portal does not link the manifest or an apple-touch-icon")
 	}
+	if !strings.Contains(body, `id="refresh"`) || !strings.Contains(body, "visibilitychange") {
+		t.Error("portal should offer a refresh control and refresh when the app resumes")
+	}
 }
 
 func TestSubListsRoutesQuotaAndDeviceUsage(t *testing.T) {
