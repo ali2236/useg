@@ -5,4 +5,7 @@ Wants=network-online.target
 
 [Service]
 Type=oneshot
+# systemd gives this unit an empty environment; without HOME, go cannot find
+# /root/go/pkg/mod and the build aborts after the pull.
+Environment=HOME=/root
 ExecStart=/usr/local/bin/useg-update
