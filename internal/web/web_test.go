@@ -136,7 +136,7 @@ func TestPortalShowsDeviceAndGuestState(t *testing.T) {
 		t.Error("a guest must not see the household's people section")
 	}
 	// A guest device with no usage has its full guest allowance.
-	if !strings.Contains(rec.Body.String(), "۱۰") && !strings.Contains(rec.Body.String(), "10.0 MB") {
+	if !strings.Contains(rec.Body.String(), "۱۰ مگابایت") {
 		t.Errorf("expected a 10 MB guest allowance, got:\n%s", rec.Body.String())
 	}
 
@@ -185,13 +185,13 @@ func TestPortalIdentifiedPersonSeesTheirDevices(t *testing.T) {
 	if !strings.Contains(body, "سلام، "+person.Name) {
 		t.Errorf("portal should greet the identified person:\n%s", body)
 	}
-	for _, want := range []string{"phone", "tablet", "۱٫۵ GB", "افراد", "sara", "شما"} {
+	for _, want := range []string{"phone", "tablet", "۱٫۵ گیگابایت", "افراد", "sara", "شما"} {
 		if !strings.Contains(body, want) {
 			t.Errorf("portal misses %q:\n%s", want, body)
 		}
 	}
 	// People rows are for transferring, not for showing anyone's usage.
-	if people := body[strings.Index(body, "افراد"):]; strings.Contains(people, "۲٫۵ GB") {
+	if people := body[strings.Index(body, "افراد"):]; strings.Contains(people, "۲٫۵ گیگابایت") {
 		t.Error("people section must not show usage")
 	}
 	if people := body[strings.Index(body, "افراد"):]; !strings.Contains(people, "/transfer?to=") {
@@ -297,10 +297,10 @@ func TestSubListsRoutesQuotaAndDeviceUsage(t *testing.T) {
 	if !strings.HasPrefix(lines[0], want) || !strings.HasSuffix(lines[0], "#primary") {
 		t.Errorf("route row is not a real config: %s", lines[0])
 	}
-	if !strings.Contains(fragment(lines[1]), "باقی‌مانده") || !strings.Contains(lines[1], "GB") {
+	if !strings.Contains(fragment(lines[1]), "باقی‌مانده") || !strings.Contains(fragment(lines[1]), "گیگابایت") {
 		t.Errorf("quota row misses the remaining share: %s", lines[1])
 	}
-	if !strings.Contains(lines[2], "phone") || !strings.Contains(lines[2], "GB") {
+	if !strings.Contains(fragment(lines[2]), "phone") || !strings.Contains(fragment(lines[2]), "گیگابایت") {
 		t.Errorf("row title misses the device name or its usage: %s", lines[2])
 	}
 }
@@ -1106,7 +1106,7 @@ func TestPendingUsageIsVisibleImmediately(t *testing.T) {
 	})
 	rec := do(srv.PortalHandler(), "GET", "/", "10.66.0.3:5000", nil, nil)
 	body := rec.Body.String()
-	if !strings.Contains(body, "۷٫۰ MB") {
+	if !strings.Contains(body, "۷ مگابایت") {
 		t.Errorf("remaining should already be 7 MB (10 - 3), got:\n%s", body)
 	}
 }

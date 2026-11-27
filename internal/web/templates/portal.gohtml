@@ -80,7 +80,7 @@
       <h2 class="portal-h2">{{T .Lang "portal.daily_title"}}</h2>
       <button class="btn btn-sm btn-secondary" type="button" popovertarget="daily-limit-pop">{{T .Lang "portal.daily_set"}}</button>
     </div>
-    <p class="quota-sub">{{T .Lang "portal.today"}}: {{bytes .DailyUsed .Lang}}{{if .HasDaily}} / {{bytes .DailyCap .Lang}}{{else}} · {{T .Lang "portal.daily_no_limit"}}{{end}}</p>
+    <p class="quota-sub">{{T .Lang "portal.today"}}: {{bytes .DailyUsed .Lang}}{{if .HasDaily}} {{T .Lang "portal.daily_of"}} {{bytes .DailyCap .Lang}}{{else}} · {{T .Lang "portal.daily_no_limit"}}{{end}}</p>
     {{if .DailyHistory}}
     <ul class="dev-list">
       {{range .DailyHistory}}

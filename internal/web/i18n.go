@@ -50,6 +50,7 @@ var messages = map[string][2]string{
 	"portal.bound":             {"این دستگاه به این کاربر وصل است.", "This device is bound to this person."},
 	"portal.daily_title":       {"سقف روزانه", "Daily limit"},
 	"portal.today":             {"امروز", "today"},
+	"portal.daily_of":          {"از", "of"},
 	"portal.daily_no_limit":    {"بدون سقف", "No limit"},
 	"portal.daily_set":         {"تعیین سقف", "Set limit"},
 	"portal.daily_limit_label": {"سقف روزانه (گیگابایت)", "Daily limit (GB)"},
@@ -340,12 +341,16 @@ func persianDigits(s string) string {
 	return b.String()
 }
 
-// Bytes renders a byte count at household scale. Persian gets Persian digits.
+// Bytes renders a byte count at household scale. Persian gets Persian digits
+// and Persian unit words, so a value never mixes scripts inside an RTL line.
 func Bytes(n int64, l string) string {
 	if n < 0 {
 		return "—"
 	}
 	units := []string{"B", "KB", "MB", "GB", "TB"}
+	if l == "fa" {
+		units = []string{"بایت", "کیلوبایت", "مگابایت", "گیگابایت", "ترابایت"}
+	}
 	v := float64(n)
 	i := 0
 	for v >= 1000 && i < len(units)-1 {
@@ -357,6 +362,7 @@ func Bytes(n int64, l string) string {
 		s = fmt.Sprintf("%.0f %s", v, units[i])
 	} else {
 		s = fmt.Sprintf("%.1f %s", v, units[i])
+		s = strings.Replace(s, ".0 ", " ", 1) // 2.0 GB reads as 2 GB
 	}
 	if l == "fa" {
 		return persianDigits(strings.ReplaceAll(s, ".", "٫"))

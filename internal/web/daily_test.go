@@ -52,7 +52,7 @@ func TestPortalDailyHistoryAndLimit(t *testing.T) {
 	body := do(h, "GET", "/?ok=daily", "10.66.0.3:5000", nil, nil).Body.String()
 	todayLabel := persianDigits(jalali.Format(now, "short", loc))
 	yesterdayLabel := persianDigits(jalali.Format(now.AddDate(0, 0, -1), "short", loc))
-	for _, want := range []string{"سقف روزانه ذخیره شد", "سقف مصرف روزانه", "۱٫۲ GB", "۵۰۰ MB",
+	for _, want := range []string{"سقف روزانه ذخیره شد", "سقف مصرف روزانه", "۱٫۲ گیگابایت", "۵۰۰ مگابایت",
 		`popovertarget="daily-limit-pop"`, todayLabel, yesterdayLabel} {
 		if !strings.Contains(body, want) {
 			t.Errorf("portal misses %q:\n%s", want, body)
