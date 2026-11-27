@@ -215,6 +215,7 @@ type Device struct {
 	IP         string
 	Hostname   string
 	Name       string
+	Label      string
 	FirstSeen  int64
 	LastSeen   int64
 	LastUsed   int64
@@ -223,14 +224,14 @@ type Device struct {
 	BindSource string
 }
 
-const deviceCols = `mac, COALESCE(ip,''), COALESCE(hostname,''), COALESCE(name,''),
+const deviceCols = `mac, COALESCE(ip,''), COALESCE(hostname,''), COALESCE(name,''), COALESCE(label,''),
 	COALESCE(first_seen,0), COALESCE(last_seen,0), COALESCE(last_used,0),
 	owner_person_id, bound_at, COALESCE(bind_source,'')`
 
 func scanDevice(sc interface{ Scan(...any) error }) (Device, error) {
 	var dv Device
 	var owner, bound sql.NullInt64
-	err := sc.Scan(&dv.MAC, &dv.IP, &dv.Hostname, &dv.Name, &dv.FirstSeen, &dv.LastSeen,
+	err := sc.Scan(&dv.MAC, &dv.IP, &dv.Hostname, &dv.Name, &dv.Label, &dv.FirstSeen, &dv.LastSeen,
 		&dv.LastUsed, &owner, &bound, &dv.BindSource)
 	if owner.Valid {
 		dv.Owner = &owner.Int64
@@ -296,6 +297,21 @@ func (d *DB) SetDeviceName(ip, name string) error {
 	}
 	_, err := d.Exec(`UPDATE device SET name = ?
 		WHERE ip = ? AND (name IS NULL OR name <> ?)`, name, ip, name)
+	return err
+}
+
+// SetDeviceLabel records the admin's display name for a device, keyed by MAC
+// because the override belongs to the device, not to a lease. An empty label
+// clears it and lets the advertised name or hostname show again.
+func (d *DB) SetDeviceLabel(mac, label string) error {
+	if mac == "" {
+		return nil
+	}
+	label = strings.TrimSpace(label)
+	if r := []rune(label); len(r) > 64 {
+		label = string(r[:64])
+	}
+	_, err := d.Exec(`UPDATE device SET label = NULLIF(?, '') WHERE mac = ?`, label, mac)
 	return err
 }
 

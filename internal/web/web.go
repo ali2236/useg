@@ -156,9 +156,12 @@ func reasonText(l, reason string) string {
 	return T(l, key)
 }
 
-// deviceLabel is what a human sees: the mDNS-advertised name, then the DHCP
-// hostname with its separators opened up, then the MAC.
+// deviceLabel is what a human sees: the admin's label, then the mDNS-advertised
+// name, then the DHCP hostname with its separators opened up, then the MAC.
 func deviceLabel(d store.Device) string {
+	if n := strings.TrimSpace(d.Label); n != "" {
+		return n
+	}
 	if n := strings.TrimSpace(d.Name); n != "" {
 		return n
 	}

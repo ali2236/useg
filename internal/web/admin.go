@@ -625,8 +625,11 @@ func (s *Server) admin(w http.ResponseWriter, r *http.Request) {
 	case "/admin/data/unallocate":
 		flash = "data.unallocated_ok"
 	case "/admin/device":
-		if r.FormValue("action") == "delete" {
+		switch r.FormValue("action") {
+		case "delete":
 			flash = "devices.deleted_ok"
+		case "label":
+			flash = "devices.renamed_ok"
 		}
 	}
 	http.Redirect(w, r, "/admin?ok="+urlQuery(flash), http.StatusSeeOther)
@@ -799,6 +802,12 @@ func (s *Server) postDevice(r *http.Request) error {
 	mac := r.FormValue("mac")
 	action := r.FormValue("action")
 	switch action {
+	case "label":
+		label := strings.TrimSpace(r.FormValue("label"))
+		if err := s.db.SetDeviceLabel(mac, label); err != nil {
+			return err
+		}
+		return s.db.AddEvent("device_label", "dev:"+mac, label)
 	case "bind":
 		pid, _ := strconv.ParseInt(r.FormValue("person"), 10, 64)
 		if pid == 0 {

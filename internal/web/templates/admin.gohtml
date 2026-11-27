@@ -467,6 +467,8 @@
       <td>
         <form method="post" action="/admin/device" class="row">
           <input type="hidden" name="mac" value="{{.D.MAC}}">
+          <input class="input input-sm" name="label" value="{{.D.Label}}" placeholder="{{T $l "devices.label_ph"}}" style="width:120px">
+          <button class="btn btn-sm btn-secondary" name="action" value="label">{{T $l "devices.rename"}}</button>
           {{$owner := .OwnerID}}
           <select class="select input-sm" name="person">
             <option value="0"{{if eq $owner 0}} selected{{end}}>{{T $l "devices.guest"}}</option>

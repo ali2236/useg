@@ -207,6 +207,9 @@ var messages = map[string][2]string{
 	"devices.delete_confirm": {"این دستگاه و همه سابقه‌اش حذف شود؟",
 		"Delete this device and all its history?"},
 	"devices.deleted_ok": {"دستگاه حذف شد", "device deleted"},
+	"devices.renamed_ok": {"نام دستگاه ذخیره شد", "device name saved"},
+	"devices.rename":     {"ذخیره نام", "save name"},
+	"devices.label_ph":   {"نام نمایشی", "display name"},
 	"devices.ok":         {"سالم", "ok"},
 
 	"domestic.title":     {"سایت‌های نیم‌بها", "Domestic (half-price) sites"},

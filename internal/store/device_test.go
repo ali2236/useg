@@ -50,6 +50,48 @@ func TestSetDeviceName(t *testing.T) {
 	}
 }
 
+func TestSetDeviceLabel(t *testing.T) {
+	db, err := Open(filepath.Join(t.TempDir(), "t.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	if err := db.Migrate(); err != nil {
+		t.Fatal(err)
+	}
+	now := time.Now().Unix()
+	mac := "aa:bb:cc:00:00:01"
+	if err := db.UpsertLease(mac, "10.0.0.5", "Alis-MacBook-Pro", now); err != nil {
+		t.Fatal(err)
+	}
+	if err := db.SetDeviceLabel(mac, " Living Room TV "); err != nil {
+		t.Fatal(err)
+	}
+	// A later lease or mDNS announcement must not touch the override.
+	if err := db.UpsertLease(mac, "10.0.0.6", "Alis-MacBook-Pro", now+60); err != nil {
+		t.Fatal(err)
+	}
+	if err := db.SetDeviceName("10.0.0.6", "Ali’s MacBook Pro"); err != nil {
+		t.Fatal(err)
+	}
+	dv, err := db.DeviceByMAC(mac)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if dv.Label != "Living Room TV" || dv.Name != "Ali’s MacBook Pro" {
+		t.Fatalf("device = %+v", dv)
+	}
+
+	// Clearing the label leaves the advertised name intact.
+	if err := db.SetDeviceLabel(mac, ""); err != nil {
+		t.Fatal(err)
+	}
+	dv, _ = db.DeviceByMAC(mac)
+	if dv.Label != "" || dv.Name != "Ali’s MacBook Pro" {
+		t.Fatalf("after clear: %+v", dv)
+	}
+}
+
 func TestDeleteDevice(t *testing.T) {
 	db, err := Open(filepath.Join(t.TempDir(), "t.db"))
 	if err != nil {
