@@ -427,6 +427,18 @@
       </td>
       <td><a href="{{.SubURL}}">{{T $l "persons.sub"}}</a></td>
     </tr>
+    {{range .DeviceRows}}
+    <tr class="sub-row">
+      <td>{{deviceName .D}} <span class="muted small">{{.D.MAC}}</span></td>
+      <td class="num">{{bytes .Used $l}}</td>
+      <td>
+        <form method="post" action="/admin/device">
+          <input type="hidden" name="mac" value="{{.D.MAC}}">
+          <button class="btn btn-sm btn-secondary" name="action" value="unbind">{{T $l "devices.unbind"}}</button>
+        </form>
+      </td>
+    </tr>
+    {{end}}
     {{end}}
     <tr>
       <td colspan="3">
@@ -455,9 +467,10 @@
       <td>
         <form method="post" action="/admin/device" class="row">
           <input type="hidden" name="mac" value="{{.D.MAC}}">
+          {{$owner := .OwnerID}}
           <select class="select input-sm" name="person">
-            <option value="0">{{T $l "devices.guest"}}</option>
-            {{range $.Persons}}<option value="{{.P.ID}}">{{.P.Name}}</option>{{end}}
+            <option value="0"{{if eq $owner 0}} selected{{end}}>{{T $l "devices.guest"}}</option>
+            {{range $.Persons}}<option value="{{.P.ID}}"{{if eq .P.ID $owner}} selected{{end}}>{{.P.Name}}</option>{{end}}
           </select>
           <button class="btn btn-sm btn-secondary" name="action" value="bind">{{T $l "devices.bind"}}</button>
           <button class="btn btn-sm btn-secondary" name="action" value="unbind">{{T $l "devices.unbind"}}</button>

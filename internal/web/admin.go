@@ -30,6 +30,7 @@ type personRow struct {
 	DataAllocPct int
 	DataUsedPct  int
 	Devices      int
+	DeviceRows   []deviceRow
 }
 
 type deviceRow struct {
@@ -38,6 +39,7 @@ type deviceRow struct {
 	BlockReason string
 	LastSeen    string
 	LastUsed    string
+	OwnerID     int64
 	OwnerName   string
 	GuestCap    int64
 	GuestPct    int
@@ -337,9 +339,11 @@ func (s *Server) adminData(r *http.Request, flash, errMsg string) (*adminData, e
 			d.BlockedCount++
 		}
 		if dv.Owner != nil {
+			row.OwnerID = *dv.Owner
 			row.OwnerName = personName[*dv.Owner]
 			if i, ok := personIdx[*dv.Owner]; ok {
 				d.Persons[i].Devices++
+				d.Persons[i].DeviceRows = append(d.Persons[i].DeviceRows, row)
 			}
 			if dv.IP != "" {
 				d.Connected = append(d.Connected, row)

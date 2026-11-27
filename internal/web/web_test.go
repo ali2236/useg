@@ -667,6 +667,43 @@ func TestDevicesTabSortsByLastUse(t *testing.T) {
 	}
 }
 
+func TestDeviceOwnerSelectedAndPersonSubtree(t *testing.T) {
+	srv, db, _, p := tserver(t)
+	h := srv.AdminHandler()
+	mac := "aa:bb:cc:00:00:03"
+	if err := db.Bind(mac, p.ID, "admin", time.Now().Unix()); err != nil {
+		t.Fatal(err)
+	}
+
+	ok := do(h, "POST", "/admin/login", "10.66.0.3:5000", url.Values{"password": {"pw"}}, nil)
+	var cookie *http.Cookie
+	for _, c := range ok.Result().Cookies() {
+		if c.Name == sessionCookie {
+			cookie = c
+		}
+	}
+	if cookie == nil {
+		t.Fatal("no session cookie")
+	}
+	body := do(h, "GET", "/admin?lang=en", "10.66.0.3:5000", nil, cookie).Body.String()
+
+	// The devices tab must preselect the current owner, not reset to guest.
+	if !strings.Contains(body, fmt.Sprintf(`<option value="%d" selected>`, p.ID)) {
+		t.Errorf("owner %d is not selected in the device form", p.ID)
+	}
+
+	// The people tab lists each person's devices in a subtree with an unbind button.
+	start := strings.Index(body, `id="persons"`)
+	end := strings.Index(body[start:], `id="devices"`)
+	if start < 0 || end < 0 {
+		t.Fatal("persons or devices section not found")
+	}
+	people := body[start : start+end]
+	if !strings.Contains(people, mac) || !strings.Contains(people, `value="unbind"`) || !strings.Contains(people, "sub-row") {
+		t.Errorf("device %s missing from the person subtree:\n%s", mac, people)
+	}
+}
+
 func discardLogger() *slog.Logger {
 	return slog.New(slog.NewTextHandler(io.Discard, nil))
 }

@@ -213,6 +213,8 @@ a:focus-visible, button:focus-visible, [role="tab"]:focus-visible {
 .table tr.is-blocked { background: color-mix(in srgb, var(--danger) 5%, transparent); }
 .table th:first-child, .table td:first-child { padding-inline-start: 0; }
 .table th:last-child, .table td:last-child { padding-inline-end: 0; }
+.table tr.sub-row td:first-child { padding-inline-start: 28px; }
+.table tr.sub-row td { font-size: .78rem; color: var(--text-secondary); }
 
 /* ---- badges & alerts ---------------------------------------------------- */
 
