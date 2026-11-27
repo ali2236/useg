@@ -212,6 +212,41 @@ func (d *DB) RotateSubToken(id int64) (string, error) {
 	return tok, err
 }
 
+func (d *DB) SetPersonName(id int64, name string) error {
+	_, err := d.Exec(`UPDATE person SET name = ? WHERE id = ?`, name, id)
+	return err
+}
+
+// DeletePerson removes the person and their history. Devices stay and become
+// guests; credentials cascade with the row.
+func (d *DB) DeletePerson(id int64) error {
+	subject := fmt.Sprintf("person:%d", id)
+	return d.tx(func(tx *sql.Tx) error {
+		for _, q := range []string{
+			`DELETE FROM usage WHERE subject = ?`,
+			`DELETE FROM daily_usage WHERE subject = ?`,
+			`DELETE FROM block WHERE subject = ?`,
+			`DELETE FROM event WHERE subject = ?`,
+		} {
+			if _, err := tx.Exec(q, subject); err != nil {
+				return err
+			}
+		}
+		if _, err := tx.Exec(`DELETE FROM allocation WHERE person_id = ?`, id); err != nil {
+			return err
+		}
+		if _, err := tx.Exec(`DELETE FROM transfer WHERE from_person_id = ? OR to_person_id = ?`, id, id); err != nil {
+			return err
+		}
+		if _, err := tx.Exec(`UPDATE device SET owner_person_id = NULL, bound_at = NULL,
+			bind_source = NULL WHERE owner_person_id = ?`, id); err != nil {
+			return err
+		}
+		_, err := tx.Exec(`DELETE FROM person WHERE id = ?`, id)
+		return err
+	})
+}
+
 // SetDailyLimit stores a person's self-serve daily cap; nil clears it.
 func (d *DB) SetDailyLimit(id int64, limit *int64) error {
 	_, err := d.Exec(`UPDATE person SET daily_limit = ? WHERE id = ?`, limit, id)

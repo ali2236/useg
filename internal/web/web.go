@@ -527,23 +527,6 @@ func (s *Server) transfer(w http.ResponseWriter, r *http.Request) {
 	s.render(w, "transfer.gohtml", page)
 }
 
-func (s *Server) subURL(r *http.Request, p store.Person) string {
-	host := s.cfg.BoxIP
-	if h, _, err := net.SplitHostPort(r.Host); err == nil {
-		host = h
-	} else if r.Host != "" {
-		host = r.Host
-	}
-	// When the portal is published to a dev machine, pointing the phone at
-	// localhost would be useless; the LAN address of the box is the truth.
-	if !s.cfg.Dev {
-		if host == "" || host == "127.0.0.1" || host == "localhost" {
-			host = s.cfg.BoxIP
-		}
-	}
-	return s.cfg.SubURL(host, p.SubToken)
-}
-
 // ---- subscription -----------------------------------------------------------
 
 func (s *Server) sub(w http.ResponseWriter, r *http.Request) {

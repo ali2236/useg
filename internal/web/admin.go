@@ -24,10 +24,8 @@ type personRow struct {
 	Cap          int64
 	Allocated    int64
 	Remaining    int64
-	CapGB        string
 	DailyUsed    int64
 	DailyLimitGB string
-	SubURL       string
 	Pct          int
 	AllocPct     int
 	UsedPct      int
@@ -228,10 +226,7 @@ func (s *Server) adminData(r *http.Request, flash, errMsg string) (*adminData, e
 		st := dec.Subjects[subj]
 		row := personRow{P: p, Status: st, Used: st.Used, Cap: st.Cap,
 			DailyUsed: st.DailyUsed,
-			Allocated: in.Allocations[p.ID], SubURL: s.subURL(r, p)}
-		if p.CapOverride != nil {
-			row.CapGB = fmt.Sprintf("%.2f", float64(*p.CapOverride)/1e9)
-		}
+			Allocated: in.Allocations[p.ID]}
 		if st.DailyCap > 0 {
 			row.DailyLimitGB = strconv.FormatFloat(float64(st.DailyCap)/1e9, 'f', -1, 64)
 		}
@@ -600,6 +595,10 @@ func (s *Server) admin(w http.ResponseWriter, r *http.Request) {
 		err = s.postNewPerson(r)
 	case "/admin/person/daily-limit":
 		err = s.postDailyLimit(r)
+	case "/admin/person/rename":
+		err = s.postPersonRename(r)
+	case "/admin/person/delete":
+		err = s.postPersonDelete(r)
 	case "/admin/device":
 		err = s.postDevice(r)
 	case "/admin/route":
@@ -670,12 +669,45 @@ func (s *Server) admin(w http.ResponseWriter, r *http.Request) {
 		}
 	case "/admin/person/daily-limit":
 		flash = "persons.daily_ok"
+	case "/admin/person/rename":
+		flash = "persons.renamed_ok"
+	case "/admin/person/delete":
+		flash = "persons.deleted_ok"
 	}
 	http.Redirect(w, r, "/admin?ok="+urlQuery(flash), http.StatusSeeOther)
 }
 
 func urlQuery(s string) string {
 	return strings.ReplaceAll(strings.TrimSpace(s), " ", "+")
+}
+
+func (s *Server) postPersonRename(r *http.Request) error {
+	pid, err := strconv.ParseInt(r.FormValue("person"), 10, 64)
+	if err != nil || pid <= 0 {
+		return fmt.Errorf("choose a person")
+	}
+	name := strings.TrimSpace(r.FormValue("name"))
+	if name == "" {
+		return fmt.Errorf("name required")
+	}
+	if _, err := s.db.Person(pid); err != nil {
+		return fmt.Errorf("unknown person")
+	}
+	if err := s.db.SetPersonName(pid, name); err != nil {
+		return err
+	}
+	return s.db.AddEvent("person_rename", quota.PersonSubject(pid), name)
+}
+
+func (s *Server) postPersonDelete(r *http.Request) error {
+	pid, err := strconv.ParseInt(r.FormValue("person"), 10, 64)
+	if err != nil || pid <= 0 {
+		return fmt.Errorf("choose a person")
+	}
+	if err := s.db.DeletePerson(pid); err != nil {
+		return err
+	}
+	return s.db.AddEvent("person_delete", "admin", "person:"+strconv.FormatInt(pid, 10))
 }
 
 // postDailyLimit sets or clears a person's self-serve daily cap; the portal

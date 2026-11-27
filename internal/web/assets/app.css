@@ -408,14 +408,14 @@ code {
 .portal-section > summary::marker { color: var(--text-secondary); }
 .portal-head-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 8px; }
 .portal-head-row .portal-h2 { margin: 0; }
-.portal-pop {
+.portal-pop, .pop {
   width: min(320px, calc(100vw - 32px));
   padding: 16px;
   border: 1px solid var(--border-strong); border-radius: var(--radius-container);
   background: var(--bg-surface); color: var(--text);
   box-shadow: var(--shadow-low);
 }
-.portal-pop::backdrop { background: rgba(0, 0, 0, .35); }
+.portal-pop::backdrop, .pop::backdrop { background: rgba(0, 0, 0, .35); }
 .dev-name .badge { margin-inline-start: 8px; }
 
 .dev-list {
@@ -451,6 +451,8 @@ code {
 .dev-dot.is-on { background: var(--success); }
 .dev-dot.is-off { background: var(--danger); }
 .dev-sub { flex-basis: 100%; }
+.dev-bar { flex-basis: 100%; }
+.dev-bar .progress { margin-top: 0; }
 
 .dev-tools { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
 .dev-search { width: 240px; max-width: 100%; }
@@ -499,6 +501,11 @@ code {
 .menu-actions {
   display: flex; flex-wrap: wrap; gap: 8px;
   margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--border);
+}
+.menu-device {
+  display: flex; align-items: center; justify-content: space-between; gap: 8px;
+  margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--border);
+  overflow-wrap: anywhere;
 }
 
 .empty-state {

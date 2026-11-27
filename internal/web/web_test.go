@@ -466,7 +466,7 @@ func TestAdminNeedsSession(t *testing.T) {
 	}
 	rec = do(h, "GET", "/admin", "10.66.0.3:5000", nil, cookie)
 	body := rec.Body.String()
-	if rec.Code != 200 || !strings.Contains(body, `<html lang="fa" dir="rtl">`) || !strings.Contains(body, "<h2>افراد</h2>") || !strings.Contains(body, `href="/assets/app.css?v=2"`) {
+	if rec.Code != 200 || !strings.Contains(body, `<html lang="fa" dir="rtl">`) || !strings.Contains(body, "<h2>افراد</h2>") || !strings.Contains(body, `href="/assets/app.css?v=3"`) {
 		t.Fatalf("dashboard: %d", rec.Code)
 	}
 	for _, want := range []string{
@@ -857,7 +857,7 @@ func TestAdminLangSwitchAndFont(t *testing.T) {
 
 	rec := do(h, "GET", "/admin?lang=en", "10.66.0.3:5000", nil, cookie)
 	body := rec.Body.String()
-	if !strings.Contains(body, `<html lang="en" dir="ltr">`) || !strings.Contains(body, "<h2>People</h2>") || !strings.Contains(body, `href="/assets/app.css?v=2"`) {
+	if !strings.Contains(body, `<html lang="en" dir="ltr">`) || !strings.Contains(body, "<h2>People</h2>") || !strings.Contains(body, `href="/assets/app.css?v=3"`) {
 		t.Errorf("english admin missing:\n%s", body)
 	}
 	for _, want := range []string{`id="audit"`, `id="machine"`, `data-tab="dashboard"`, `data-tab="data"`, `class="panel is-active"`, "</html>", "class rates", "Days left", "Start a new cycle", "Usage by person"} {
@@ -1024,15 +1024,70 @@ func TestDeviceOwnerSelectedAndPersonSubtree(t *testing.T) {
 		t.Errorf("owner %d is not selected in the device form", p.ID)
 	}
 
-	// The people tab lists each person's devices in a subtree with an unbind button.
+	// The people tab lists each person's devices in the manage popup with an
+	// unbind button, and never exposes subscription links.
 	start := strings.Index(body, `id="persons"`)
 	end := strings.Index(body[start:], `id="devices"`)
 	if start < 0 || end < 0 {
 		t.Fatal("persons or devices section not found")
 	}
 	people := body[start : start+end]
-	if !strings.Contains(people, mac) || !strings.Contains(people, `value="unbind"`) || !strings.Contains(people, "sub-row") {
+	if !strings.Contains(people, mac) || !strings.Contains(people, `value="unbind"`) {
 		t.Errorf("device %s missing from the person subtree:\n%s", mac, people)
+	}
+	if strings.Contains(people, "/sub/") {
+		t.Errorf("admin people tab should not show subscription links:\n%s", people)
+	}
+}
+
+func TestAdminRenamesAndDeletesPerson(t *testing.T) {
+	srv, db, _, person := tserver(t)
+	h := srv.AdminHandler()
+	ok := do(h, "POST", "/admin/login", "10.66.0.3:5000", url.Values{"password": {"pw"}}, nil)
+	var cookie *http.Cookie
+	for _, c := range ok.Result().Cookies() {
+		if c.Name == sessionCookie {
+			cookie = c
+		}
+	}
+	if cookie == nil {
+		t.Fatal("no session cookie")
+	}
+	pid := strconv.FormatInt(person.ID, 10)
+
+	rec := do(h, "POST", "/admin/person/rename", "10.66.0.3:5000",
+		url.Values{"person": {pid}, "name": {"Renamed"}}, cookie)
+	if rec.Code != http.StatusSeeOther {
+		t.Fatalf("rename: %d", rec.Code)
+	}
+	if loc := rec.Header().Get("Location"); loc != "/admin?ok=persons.renamed_ok" {
+		t.Errorf("rename redirect = %q", loc)
+	}
+	if p, err := db.Person(person.ID); err != nil || p.Name != "Renamed" {
+		t.Fatalf("name = %q, %v", p.Name, err)
+	}
+
+	rec = do(h, "POST", "/admin/person/delete", "10.66.0.3:5000",
+		url.Values{"person": {pid}}, cookie)
+	if rec.Code != http.StatusSeeOther {
+		t.Fatalf("delete: %d", rec.Code)
+	}
+	if _, err := db.Person(person.ID); err == nil {
+		t.Error("person still exists after delete")
+	}
+	// The bound device survives as a guest.
+	devices, err := db.Devices()
+	if err != nil {
+		t.Fatal(err)
+	}
+	found := false
+	for _, dv := range devices {
+		if dv.Owner != nil && *dv.Owner == person.ID {
+			found = true
+		}
+	}
+	if found {
+		t.Error("deleted person still owns a device")
 	}
 }
 
