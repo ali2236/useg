@@ -85,3 +85,10 @@ func TestBoundaryIsMidnightTehran(t *testing.T) {
 		t.Fatalf("boundary not at local midnight: %v", b.In(tehran))
 	}
 }
+
+func TestFormatNumericTime(t *testing.T) {
+	at := Date{1405, 9, 7}.Midnight(tehran).Add(14*time.Hour + 2*time.Minute)
+	if got := Format(at, "numeric-time", tehran); got != "09/07-14:02" {
+		t.Fatalf("numeric-time = %q, want 09/07-14:02", got)
+	}
+}

@@ -118,10 +118,10 @@
           <div class="list-row list-row--dev">
             <div class="list-name">
               <strong>{{deviceName .D}}</strong>
-              <span class="muted small">{{.OwnerName}}{{if .D.IP}} · <span class="ltr num">{{.D.IP}}</span>{{end}}</span>
+              <span class="muted small">{{.OwnerName}}{{if .D.IP}} · <span class="ltr">{{.D.IP}}</span>{{end}}</span>
             </div>
             <div class="num small">{{bytes .Used $l}}</div>
-            <div>{{if .BlockReason}}<span class="badge badge-danger">{{reason $l .BlockReason}}</span>{{else}}<span class="muted small num">{{.LastSeen}}</span>{{end}}</div>
+            <div>{{if .BlockReason}}<span class="badge badge-danger">{{reason $l .BlockReason}}</span>{{else if .LastSeen}}<span class="muted small ltr">{{jalali .LastSeen "numeric-time"}}</span>{{end}}</div>
           </div>
         {{end}}
         </div>
@@ -139,7 +139,7 @@
           <div class="list-row list-row--dev{{if .BlockReason}} is-blocked{{end}}">
             <div class="list-name">
               <strong>{{deviceName .D}}</strong>
-              <span class="muted small">{{if .D.IP}}<span class="ltr num">{{.D.IP}}</span>{{end}}{{if .LastSeen}}{{if .D.IP}} · {{end}}{{.LastSeen}}{{end}}</span>
+              <span class="muted small">{{if .D.IP}}<span class="ltr">{{.D.IP}}</span>{{end}}{{if .LastSeen}}{{if .D.IP}} · {{end}}<span class="ltr">{{jalali .LastSeen "numeric-time"}}</span>{{end}}</span>
               {{if gt .GuestCap 0}}<div class="progress" role="progressbar" aria-valuenow="{{.GuestPct}}" aria-valuemin="0" aria-valuemax="100"><div class="progress-fill{{if ge .Used .GuestCap}} is-danger{{end}}" style="width: {{.GuestPct}}%"></div></div>{{end}}
             </div>
             <div class="num small">{{if gt .GuestCap 0}}{{bytes .Used $l}} / {{bytes .GuestCap $l}}{{else}}{{bytes .Used $l}}{{end}}</div>
@@ -512,7 +512,7 @@
           <span class="badge badge-neutral">{{if .OwnerName}}{{.OwnerName}}{{else}}{{T $l "devices.guest"}}{{end}}</span>
           {{if .BlockReason}}<span class="badge badge-danger">{{reason $l .BlockReason}}</span>{{end}}
           {{if or .D.IP .LastUsed}}<span class="dev-sub muted small">
-            {{if .D.IP}}<span class="ltr num">{{.D.IP}}</span>{{end}}{{if and .D.IP .LastUsed}} · {{end}}{{if .LastUsed}}{{T $l "devices.last_used"}} <span class="num">{{.LastUsed}}</span>{{end}}
+            {{if .D.IP}}<span class="ltr">{{.D.IP}}</span>{{end}}{{if and .D.IP .LastUsed}} · {{end}}{{if .LastUsed}}{{T $l "devices.last_used"}} <span class="ltr">{{jalali .LastUsed "numeric-time"}}</span>{{end}}
           </span>{{end}}
         </div>
 
@@ -525,7 +525,7 @@
           <div class="menu-panel">
             <div class="menu-meta">
               <span class="muted">{{T $l "devices.mac"}}</span>
-              <span class="ltr num">{{.D.MAC}}{{if .D.BindSource}} · {{.D.BindSource}}{{end}}</span>
+              <span class="ltr">{{.D.MAC}}</span>
             </div>
             <form method="post" action="/admin/device" class="menu-form">
               <input type="hidden" name="mac" value="{{.D.MAC}}">

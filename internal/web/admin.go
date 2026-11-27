@@ -37,8 +37,8 @@ type deviceRow struct {
 	D           store.Device
 	Used        int64
 	BlockReason string
-	LastSeen    string
-	LastUsed    string
+	LastSeen    int64
+	LastUsed    int64
 	OwnerID     int64
 	OwnerName   string
 	GuestCap    int64
@@ -329,12 +329,8 @@ func (s *Server) adminData(r *http.Request, flash, errMsg string) (*adminData, e
 			D:           dv,
 			Used:        used,
 			BlockReason: dec.Blocked[dv.MAC],
-		}
-		if dv.LastSeen > 0 {
-			row.LastSeen = time.Unix(dv.LastSeen, 0).In(s.loc).Format("01-02 15:04")
-		}
-		if dv.LastUsed > 0 {
-			row.LastUsed = time.Unix(dv.LastUsed, 0).In(s.loc).Format("01-02 15:04")
+			LastSeen:    dv.LastSeen,
+			LastUsed:    dv.LastUsed,
 		}
 		if row.BlockReason != "" {
 			d.BlockedCount++

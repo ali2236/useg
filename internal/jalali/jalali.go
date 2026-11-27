@@ -129,7 +129,7 @@ func MonthName(m int, lang string) string {
 }
 
 // Format renders a UTC instant as a Jalali date. Styles: "short" (12 Azar),
-// "long" (12 Azar 1405), "numeric" (1405/12/12).
+// "long" (12 Azar 1405), "numeric" (1405/12/12), "numeric-time" (12/12-14:02).
 func Format(t time.Time, style string, loc *time.Location) string {
 	d := FromTime(t, loc)
 	switch style {
@@ -137,6 +137,9 @@ func Format(t time.Time, style string, loc *time.Location) string {
 		return fmt.Sprintf("%d %s", d.D, MonthName(d.M, "fa"))
 	case "long":
 		return fmt.Sprintf("%d %s %d", d.D, MonthName(d.M, "fa"), d.Y)
+	case "numeric-time":
+		lt := t.In(loc)
+		return fmt.Sprintf("%02d/%02d-%02d:%02d", d.M, d.D, lt.Hour(), lt.Minute())
 	default:
 		return fmt.Sprintf("%d/%02d/%02d", d.Y, d.M, d.D)
 	}
