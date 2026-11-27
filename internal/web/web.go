@@ -249,7 +249,7 @@ func (s *Server) subURL(r *http.Request, p store.Person) string {
 			host = s.cfg.BoxIP
 		}
 	}
-	return fmt.Sprintf("http://%s:%d/sub/%s", host, s.cfg.PortalPort, p.SubToken)
+	return s.cfg.SubURL(host, p.SubToken)
 }
 
 // ---- subscription -----------------------------------------------------------
@@ -289,12 +289,47 @@ func (s *Server) sub(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	creds, err := s.db.Credentials()
+	period, err := s.db.EnsurePeriod(time.Now(), s.loc)
 	if err != nil {
 		http.Error(w, "database error", http.StatusInternalServerError)
 		return
 	}
+	in, err := quota.Gather(s.db, period)
+	if err != nil {
+		http.Error(w, "database error", http.StatusInternalServerError)
+		return
+	}
+	s.withPending(&in)
+	dec := quota.Compute(in)
+	st := dec.Subjects[quota.PersonSubject(person.ID)]
+
+	// One unconnectable row per owned device, titled with its name and what it
+	// used this period. Clients only understand configs, so a row is the only
+	// way to show per-device usage in them.
+	devices, err := s.db.Devices()
+	if err != nil {
+		http.Error(w, "database error", http.StatusInternalServerError)
+		return
+	}
+	locale := person.Locale
+	if locale == "" {
+		locale = "fa"
+	}
+	const noConnect = "vless://00000000-0000-0000-0000-000000000000@127.0.0.1:1"
+	q := url.Values{}
+	q.Set("type", "tcp")
+	q.Set("security", "none")
+	q.Set("encryption", "none")
+	var lines []string
+
+	// One connectable row per enabled (person, route) listener. These are what
+	// make the subscription installable; the rows below are only labels.
 	routes, err := s.db.Routes()
+	if err != nil {
+		http.Error(w, "database error", http.StatusInternalServerError)
+		return
+	}
+	creds, err := s.db.Credentials()
 	if err != nil {
 		http.Error(w, "database error", http.StatusInternalServerError)
 		return
@@ -303,33 +338,53 @@ func (s *Server) sub(w http.ResponseWriter, r *http.Request) {
 	for _, rt := range routes {
 		routeByID[rt.ID] = rt
 	}
-	var lines []string
 	for _, c := range creds {
 		rt, ok := routeByID[c.RouteID]
-		if !ok || c.PersonID != person.ID || !c.Enabled || !rt.Enabled {
+		if c.PersonID != person.ID || !c.Enabled || !ok || !rt.Enabled || !rt.AllowAll {
 			continue
 		}
-		if !rt.AllowAll {
-			continue // v1: per-route grants are not implemented yet
-		}
-		q := url.Values{}
-		q.Set("type", "tcp")
-		q.Set("security", "none")
-		q.Set("encryption", "none")
 		lines = append(lines, fmt.Sprintf("vless://%s@%s:%d?%s#%s",
 			c.UUID, s.cfg.BoxIP, c.Port, q.Encode(), url.PathEscape(rt.Name)))
 	}
+
+	// The remaining share as a row, x-ui style: clients that only show server
+	// names would otherwise hide the Subscription-Userinfo header.
+	remaining := st.Cap - st.Used
+	if remaining < 0 {
+		remaining = 0
+	}
+	title := T(locale, "sub.unlimited")
+	if st.Cap >= 0 {
+		title = fmt.Sprintf(T(locale, "sub.remaining"), Bytes(remaining, locale), Bytes(st.Cap, locale))
+	}
+	lines = append(lines, fmt.Sprintf("%s?%s#%s", noConnect, q.Encode(), url.PathEscape(title)))
+
+	for _, d := range devices {
+		if d.Owner == nil || *d.Owner != person.ID {
+			continue
+		}
+		used := int64(in.Totals[quota.DeviceSubject(d.MAC)].Charged)
+		title := deviceLabel(d) + " · " + Bytes(used, locale)
+		lines = append(lines, fmt.Sprintf("%s?%s#%s", noConnect, q.Encode(), url.PathEscape(title)))
+	}
+
 	if r.URL.Query().Get("raw") != "" {
 		w.Header().Set("Content-Type", "text/plain; charset=utf-8")
 		fmt.Fprintln(w, strings.Join(lines, "\n"))
 		return
 	}
+	total := st.Cap
+	if total < 0 {
+		total = 0 // clients read 0 as unlimited
+	}
+	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+	w.Header().Set("Profile-Update-Interval", "12")
+	w.Header().Set("Subscription-Userinfo",
+		fmt.Sprintf("upload=0; download=%d; total=%d; expire=%d", st.Used, total, period.EndUTC))
 	body := strings.Join(lines, "\n")
 	if body != "" {
 		body += "\n"
 	}
-	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
-	w.Header().Set("Profile-Update-Interval", "12")
 	fmt.Fprint(w, base64.StdEncoding.EncodeToString([]byte(body)))
 }
 

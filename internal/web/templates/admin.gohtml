@@ -475,6 +475,7 @@
           <button class="btn btn-sm btn-secondary" name="action" value="bind">{{T $l "devices.bind"}}</button>
           <button class="btn btn-sm btn-secondary" name="action" value="unbind">{{T $l "devices.unbind"}}</button>
           {{if .BlockReason}}<button class="btn btn-sm btn-secondary" name="action" value="unblock">{{T $l "devices.unblock"}}</button>{{else}}<button class="btn btn-sm btn-danger" name="action" value="block">{{T $l "devices.block"}}</button>{{end}}
+          <button class="btn btn-sm btn-danger" name="action" value="delete" onclick="return confirm('{{T $l "devices.delete_confirm"}}')">{{T $l "devices.delete"}}</button>
         </form>
       </td>
       <td class="num">{{bytes .Used $l}}</td>

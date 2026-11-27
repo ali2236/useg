@@ -102,6 +102,28 @@ func TestGuestPoolIsHardCeiling(t *testing.T) {
 	if dec.Blocked["dd:dd:dd:dd:dd:dd"] != ReasonGuestPool {
 		t.Fatalf("fresh guest reason = %q, want %q", dec.Blocked["dd:dd:dd:dd:dd:dd"], ReasonGuestPool)
 	}
+	if st := dec.Subjects[DeviceSubject("dd:dd:dd:dd:dd:dd")]; st.Cap != 0 {
+		t.Fatalf("fresh guest cap = %d, want 0 with the pool exhausted", st.Cap)
+	}
+}
+
+func TestGuestCapShrinksWithSharedPool(t *testing.T) {
+	in := base()
+	in.GuestPool = 1 * gb
+	in.Devices = append(in.Devices, store.Device{MAC: "cc:cc:cc:cc:cc:cc", IP: "192.168.1.12"})
+	in.Totals["dev:cc:cc:cc:cc:cc:cc"] = store.Totals{Charged: 0.5 * float64(gb)}
+	dec := Compute(in)
+	// Half the pool is gone: a fresh guest can only see the other half.
+	if st := dec.Subjects[DeviceSubject("bb:bb:bb:bb:bb:bb")]; st.Cap != 500_000_000 {
+		t.Fatalf("fresh guest cap = %d, want the 500MB pool headroom", st.Cap)
+	}
+	// The spending guest keeps its allowance but has the same 500MB left.
+	if st := dec.Subjects[DeviceSubject("cc:cc:cc:cc:cc:cc")]; st.Cap != 1*gb || st.Used != 500_000_000 {
+		t.Fatalf("spending guest = %+v, want a 1GB cap with 500MB used", st)
+	}
+	if dec.Blocked["bb:bb:bb:bb:bb:bb"] != "" {
+		t.Fatalf("fresh guest blocked with pool left: %q", dec.Blocked["bb:bb:bb:bb:bb:bb"])
+	}
 }
 
 func TestHouseholdCeilingBlocksEverybody(t *testing.T) {

@@ -624,6 +624,10 @@ func (s *Server) admin(w http.ResponseWriter, r *http.Request) {
 		flash = "data.allocated_ok"
 	case "/admin/data/unallocate":
 		flash = "data.unallocated_ok"
+	case "/admin/device":
+		if r.FormValue("action") == "delete" {
+			flash = "devices.deleted_ok"
+		}
 	}
 	http.Redirect(w, r, "/admin?ok="+urlQuery(flash), http.StatusSeeOther)
 }
@@ -820,6 +824,11 @@ func (s *Server) postDevice(r *http.Request) error {
 			return err
 		}
 		return s.db.AddEvent("unblock", "dev:"+mac, "by admin")
+	case "delete":
+		if err := s.db.DeleteDevice(mac); err != nil {
+			return err
+		}
+		return s.db.AddEvent("device_delete", "dev:"+mac, "by admin")
 	}
 	return fmt.Errorf("unknown action %q", action)
 }

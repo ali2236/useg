@@ -332,6 +332,25 @@ func (d *DB) Unbind(mac string) error {
 	return err
 }
 
+// DeleteDevice forgets a device and all of its history: usage in every period,
+// its block, and its audit events.
+func (d *DB) DeleteDevice(mac string) error {
+	subject := "dev:" + mac
+	return d.tx(func(tx *sql.Tx) error {
+		for _, q := range []string{
+			`DELETE FROM usage WHERE subject = ?`,
+			`DELETE FROM block WHERE subject = ?`,
+			`DELETE FROM event WHERE subject = ?`,
+		} {
+			if _, err := tx.Exec(q, subject); err != nil {
+				return err
+			}
+		}
+		_, err := tx.Exec(`DELETE FROM device WHERE mac = ?`, mac)
+		return err
+	})
+}
+
 func (d *DB) TouchBinding(mac string, now int64) error {
 	_, err := d.Exec(`UPDATE device SET bound_at = ? WHERE mac = ?`, now, mac)
 	return err

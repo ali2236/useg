@@ -14,6 +14,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"path/filepath"
 	"syscall"
 	"time"
 
@@ -177,9 +178,23 @@ func cmdServer(args []string) error {
 
 	portal := &http.Server{Addr: cfg.PortalListen, Handler: srv.PortalHandler()}
 	admin := &http.Server{Addr: cfg.AdminListen, Handler: srv.AdminHandler()}
-	errCh := make(chan error, 2)
+	errCh := make(chan error, 3)
 	go func() { errCh <- portal.ListenAndServe() }()
 	go func() { errCh <- admin.ListenAndServe() }()
+
+	var tlsSrv *http.Server
+	if cfg.TLSListen != "" {
+		certFile, keyFile := cfg.TLSCert, cfg.TLSKey
+		if certFile == "" || keyFile == "" {
+			certFile, keyFile, err = web.EnsureCert(filepath.Join(cfg.DataDir, "tls"), cfg.BoxIP)
+			if err != nil {
+				return fmt.Errorf("tls cert: %w", err)
+			}
+			log.Info("using self-signed subscription cert", "cert", certFile)
+		}
+		tlsSrv = &http.Server{Addr: cfg.TLSListen, Handler: srv.PortalHandler()}
+		go func() { errCh <- tlsSrv.ListenAndServeTLS(certFile, keyFile) }()
+	}
 
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
@@ -214,6 +229,9 @@ func cmdServer(args []string) error {
 			defer cancel()
 			_ = portal.Shutdown(shutdownCtx)
 			_ = admin.Shutdown(shutdownCtx)
+			if tlsSrv != nil {
+				_ = tlsSrv.Shutdown(shutdownCtx)
+			}
 			return nil
 		case err := <-errCh:
 			if err != nil && !errors.Is(err, http.ErrServerClosed) {
@@ -449,7 +467,7 @@ func cmdSeed(args []string) error {
 		jalali.Format(time.Unix(period.StartUTC, 0), "long", loc),
 		jalali.Format(time.Unix(period.EndUTC, 0), "long", loc), len(mustPersons(db)))
 	for _, p := range mustPersons(db) {
-		fmt.Printf("  person:%d %-6s sub http://%s:%d/sub/%s\n", p.ID, p.Name, cfg.BoxIP, cfg.PortalPort, p.SubToken)
+		fmt.Printf("  person:%d %-6s sub %s\n", p.ID, p.Name, cfg.SubURL(cfg.BoxIP, p.SubToken))
 	}
 	return nil
 }

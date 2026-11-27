@@ -2,13 +2,16 @@ package web
 
 import (
 	"context"
+	"crypto/x509"
 	"encoding/base64"
+	"encoding/pem"
 	"fmt"
 	"io"
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"os"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -94,6 +97,12 @@ func do(srv http.Handler, method, target, remote string, form url.Values, cookie
 	return rec
 }
 
+// fragment is the percent-decoded #name of a subscription row.
+func fragment(row string) string {
+	s, _ := url.PathUnescape(row[strings.LastIndex(row, "#")+1:])
+	return s
+}
+
 // An OS connectivity probe must land on the portal, not on a 404, or the device
 // stays silent instead of showing its sign-in sheet.
 func TestCaptiveProbeRedirectsToPortal(t *testing.T) {
@@ -134,21 +143,87 @@ func TestPortalShowsDeviceAndGuestState(t *testing.T) {
 	}
 }
 
-func TestSubFetchBindsDeviceAndListsRoutes(t *testing.T) {
-	srv, db, _, person := tserver(t)
-	h := srv.PortalHandler()
+func TestSubListsRoutesQuotaAndDeviceUsage(t *testing.T) {
+	srv, db, cfg, person := tserver(t)
+	period, err := db.EnsurePeriod(time.Now(), cfg.Location())
+	if err != nil {
+		t.Fatal(err)
+	}
+	routeID := int64(1)
+	if rs, _ := db.Routes(); len(rs) > 0 {
+		routeID = rs[0].ID
+	}
+	if err := db.UpsertUsage(period.ID, []store.UsageRow{{
+		Subject: "dev:aa:bb:cc:00:00:03", RouteID: routeID, ClassID: 1,
+		Up: 2_000_000_000, Down: 5_000_000_000, Charged: 7_000_000_000,
+	}}); err != nil {
+		t.Fatal(err)
+	}
 
-	rec := do(h, "GET", "/sub/"+person.SubToken, "10.66.0.3:5000", nil, nil)
+	rec := do(srv.PortalHandler(), "GET", "/sub/"+person.SubToken, "10.66.0.3:5000", nil, nil)
 	if rec.Code != 200 {
 		t.Fatalf("sub status %d", rec.Code)
 	}
+	info := rec.Header().Get("Subscription-Userinfo")
+	for _, want := range []string{
+		"upload=0", "download=7000000000", "total=18000000000",
+		"expire=" + strconv.FormatInt(period.EndUTC, 10),
+	} {
+		if !strings.Contains(info, want) {
+			t.Errorf("Subscription-Userinfo %q misses %q", info, want)
+		}
+	}
+
 	raw, err := base64.StdEncoding.DecodeString(rec.Body.String())
 	if err != nil {
 		t.Fatalf("subscription is not base64: %v", err)
 	}
-	if !strings.HasPrefix(string(raw), "vless://") || !strings.Contains(string(raw), "#primary") {
-		t.Fatalf("unexpected subscription:\n%s", raw)
+	lines := strings.Split(strings.TrimSpace(string(raw)), "\n")
+	if len(lines) != 3 {
+		t.Fatalf("want route + quota + device rows, got %d:\n%s", len(lines), raw)
 	}
+	cred, err := db.CredentialFor(person.ID, routeID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := fmt.Sprintf("vless://%s@%s:%d?", cred.UUID, cfg.BoxIP, cred.Port)
+	if !strings.HasPrefix(lines[0], want) || !strings.HasSuffix(lines[0], "#primary") {
+		t.Errorf("route row is not a real config: %s", lines[0])
+	}
+	if !strings.Contains(fragment(lines[1]), "باقی‌مانده") || !strings.Contains(lines[1], "GB") {
+		t.Errorf("quota row misses the remaining share: %s", lines[1])
+	}
+	if !strings.Contains(lines[2], "phone") || !strings.Contains(lines[2], "GB") {
+		t.Errorf("row title misses the device name or its usage: %s", lines[2])
+	}
+}
+
+func TestSubWithoutDevicesIsNotEmpty(t *testing.T) {
+	srv, _, cfg, person := tserver(t)
+
+	rec := do(srv.PortalHandler(), "GET", "/sub/"+person.SubToken, "10.66.0.99:5000", nil, nil)
+	raw, err := base64.StdEncoding.DecodeString(rec.Body.String())
+	if err != nil {
+		t.Fatalf("subscription is not base64: %v", err)
+	}
+	lines := strings.Split(strings.TrimSpace(string(raw)), "\n")
+	if len(lines) != 2 {
+		t.Fatalf("want route + quota rows without a device, got %d:\n%s", len(lines), raw)
+	}
+	if !strings.HasPrefix(lines[0], "vless://") || !strings.Contains(lines[0], "@"+cfg.BoxIP+":") ||
+		!strings.HasSuffix(lines[0], "#primary") {
+		t.Errorf("route row is not a real config: %s", lines[0])
+	}
+	if !strings.Contains(fragment(lines[1]), "باقی‌مانده") {
+		t.Errorf("quota row missing: %s", lines[1])
+	}
+}
+
+func TestSubFetchBindsDevice(t *testing.T) {
+	srv, db, _, person := tserver(t)
+	h := srv.PortalHandler()
+
+	do(h, "GET", "/sub/"+person.SubToken, "10.66.0.3:5000", nil, nil)
 
 	dev, err := db.DeviceByMAC("aa:bb:cc:00:00:03")
 	if err != nil {
@@ -175,6 +250,63 @@ func TestSubFetchBindsDeviceAndListsRoutes(t *testing.T) {
 	if dev.Owner == nil || *dev.Owner != other {
 		t.Fatalf("vless binding was stolen by a sub fetch: %+v", dev)
 	}
+}
+
+func TestSubURLFollowsTLS(t *testing.T) {
+	cfg := &config.Config{PortalPort: 80}
+	if got := cfg.SubURL("10.66.0.2", "tok"); got != "http://10.66.0.2:80/sub/tok" {
+		t.Errorf("http link = %q", got)
+	}
+	cfg.TLSListen = ":443"
+	if got := cfg.SubURL("10.66.0.2", "tok"); got != "https://10.66.0.2/sub/tok" {
+		t.Errorf("https link = %q", got)
+	}
+	cfg.TLSListen = ":8443"
+	if got := cfg.SubURL("10.66.0.2", "tok"); got != "https://10.66.0.2:8443/sub/tok" {
+		t.Errorf("https link with port = %q", got)
+	}
+}
+
+func TestEnsureCertReusesSelfSigned(t *testing.T) {
+	dir := t.TempDir()
+	certFile, keyFile, err := EnsureCert(dir, "10.66.0.2")
+	if err != nil {
+		t.Fatal(err)
+	}
+	block, _ := pem.Decode(mustRead(t, certFile))
+	if block == nil {
+		t.Fatal("cert is not PEM")
+	}
+	cert, err := x509.ParseCertificate(block.Bytes)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(cert.IPAddresses) != 1 || cert.IPAddresses[0].String() != "10.66.0.2" {
+		t.Errorf("cert SANs = %v", cert.IPAddresses)
+	}
+	if !cert.IsCA {
+		t.Error("self-signed cert must be importable as a trusted CA")
+	}
+
+	// A second start must keep the same files, or every restart invalidates
+	// the cert the phones were told to trust.
+	before := string(mustRead(t, certFile)) + string(mustRead(t, keyFile))
+	if _, _, err := EnsureCert(dir, "10.66.0.2"); err != nil {
+		t.Fatal(err)
+	}
+	after := string(mustRead(t, certFile)) + string(mustRead(t, keyFile))
+	if before != after {
+		t.Error("cert files were rewritten on a second call")
+	}
+}
+
+func mustRead(t *testing.T, path string) []byte {
+	t.Helper()
+	b, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return b
 }
 
 func TestBadTokenIs404(t *testing.T) {

@@ -16,6 +16,14 @@ admin_listen: ":8080"
 admin_password: change-me-before-first-boot
 portal_port: 80
 
+# Subscription links are https because v2ray clients reject http ones. The
+# server writes a self-signed cert to data_dir/tls on first start; import that
+# sub.crt as a trusted CA on the phones, or point tls_cert/tls_key at a real
+# cert. tls_listen: "off" disables TLS and falls back to http links.
+tls_listen: ":443"
+# tls_cert: /var/lib/useg/tls/sub.crt
+# tls_key: /var/lib/useg/tls/sub.key
+
 tproxy_port: 7895
 clash_url: http://127.0.0.1:9090
 singbox_bin: /usr/local/bin/sing-box

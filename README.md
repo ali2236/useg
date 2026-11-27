@@ -35,8 +35,8 @@ quota loop, portal, subscription endpoint, admin UI).
   plus a per-device allowance. A cap that is hit blocks the subject in nftables
   and flushes its conntrack entries.
 - **Routes and subscriptions.** direct / v2ray / socks / http upstreams, one VLESS
-  listener per (person, route), a subscription URL per person that is both config
-  and identity. Disabling a credential revokes access.
+  listener per (person, route), and an https subscription URL per person that
+  reports remaining quota and one device row per bound device.
 - **Operator UI.** Server-rendered Persian portal for blocked devices and a
   password-protected admin (people, devices, routes, rates, periods, audit log,
   `/admin/api/summary`).
@@ -56,7 +56,8 @@ quota loop, portal, subscription endpoint, admin UI).
 
 - The psiphon route kind is a label; the outbound is whatever `upstream_json` says.
 - No per-route grants: `allow_all=false` hides a route from every subscription.
-- No IPv6, no content filtering, no TLS on the LAN hop.
+- No IPv6, no content filtering, no TLS on the proxy LAN hop (the subscription
+  link itself is https).
 - QUIC is dropped rather than measured — its hostname is invisible to the poll.
 
 ## Try it in Docker

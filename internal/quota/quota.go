@@ -118,12 +118,23 @@ func Compute(in Input) Decision {
 			guestUsed += int64(in.Totals[DeviceSubject(d.MAC)].Charged)
 		}
 	}
+	// What the pool still holds for guests; -1 means no shared bound. The
+	// displayed cap folds this in so "remaining" is what the device can use now.
+	poolLeft := in.GuestPool - guestUsed
+	if !in.Manual && in.GuestPool <= 0 {
+		poolLeft = -1
+	} else if poolLeft < 0 {
+		poolLeft = 0
+	}
 	for _, d := range in.Devices {
 		if d.Owner != nil {
 			continue
 		}
 		subj := DeviceSubject(d.MAC)
 		st := Status{Subject: subj, Used: int64(in.Totals[subj].Charged), Cap: in.GuestDeviceBytes, Guest: true}
+		if poolLeft >= 0 && (st.Cap < 0 || st.Used+poolLeft < st.Cap) {
+			st.Cap = st.Used + poolLeft
+		}
 		if st.Cap >= 0 && st.Used >= st.Cap {
 			st.Blocked, st.Reason = true, ReasonGuest
 		}

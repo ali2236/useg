@@ -3,6 +3,7 @@ package config
 import (
 	"errors"
 	"fmt"
+	"net"
 	"os"
 	"time"
 
@@ -20,6 +21,9 @@ type Config struct {
 	PortalListen  string `yaml:"portal_listen"`
 	AdminListen   string `yaml:"admin_listen"`
 	AdminPassword string `yaml:"admin_password"`
+	TLSListen     string `yaml:"tls_listen"` // empty = :443, "off" disables
+	TLSCert       string `yaml:"tls_cert"`   // empty = self-signed in data_dir/tls
+	TLSKey        string `yaml:"tls_key"`
 	PortalPort    int    `yaml:"portal_port"` // redirect target for blocked HTTP
 	TProxyPort    int    `yaml:"tproxy_port"`
 	ClashURL      string `yaml:"clash_url"`
@@ -67,6 +71,13 @@ func (c *Config) defaults() {
 	if c.AdminListen == "" {
 		c.AdminListen = ":8080"
 	}
+	// Subscriptions must be an https URL for most v2ray clients, so TLS is on
+	// unless a config explicitly turns it off.
+	if c.TLSListen == "" {
+		c.TLSListen = ":443"
+	} else if c.TLSListen == "off" {
+		c.TLSListen = ""
+	}
 	if c.PortalPort == 0 {
 		c.PortalPort = 80
 	}
@@ -99,6 +110,19 @@ func (c *Config) Location() *time.Location {
 		loc = time.FixedZone("+0330", 3*3600+30*60)
 	}
 	return loc
+}
+
+// SubURL is the link a client imports. https whenever TLS is on, because
+// v2ray clients reject plain http subscription links.
+func (c *Config) SubURL(host, token string) string {
+	if c.TLSListen != "" {
+		port := ""
+		if _, p, err := net.SplitHostPort(c.TLSListen); err == nil && p != "" && p != "443" {
+			port = ":" + p
+		}
+		return fmt.Sprintf("https://%s%s/sub/%s", host, port, token)
+	}
+	return fmt.Sprintf("http://%s:%d/sub/%s", host, c.PortalPort, token)
 }
 
 func (c *Config) EnsureDirs() error { return os.MkdirAll(c.DataDir, 0o750) }

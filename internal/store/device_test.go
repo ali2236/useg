@@ -50,6 +50,75 @@ func TestSetDeviceName(t *testing.T) {
 	}
 }
 
+func TestDeleteDevice(t *testing.T) {
+	db, err := Open(filepath.Join(t.TempDir(), "t.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	if err := db.Migrate(); err != nil {
+		t.Fatal(err)
+	}
+	now := time.Now().Unix()
+	target, keep := "aa:bb:cc:00:00:01", "aa:bb:cc:00:00:02"
+	for _, mac := range []string{target, keep} {
+		if err := db.UpsertLease(mac, "", "", now); err != nil {
+			t.Fatal(err)
+		}
+		for _, pid := range []int64{1, 2} {
+			if err := db.UpsertUsage(pid, []UsageRow{{
+				Subject: "dev:" + mac, RouteID: 1, ClassID: 1, Up: 10, Down: 20, Charged: 30,
+			}}); err != nil {
+				t.Fatal(err)
+			}
+		}
+	}
+	if err := db.SetBlock("dev:"+target, nil, "blocked by admin", "admin"); err != nil {
+		t.Fatal(err)
+	}
+	for _, mac := range []string{target, keep} {
+		if err := db.AddEvent("bind", "dev:"+mac, "by admin"); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	if err := db.DeleteDevice(target); err != nil {
+		t.Fatal(err)
+	}
+
+	if _, err := db.DeviceByMAC(target); err == nil {
+		t.Error("device row survived the delete")
+	}
+	var usage int
+	if err := db.QueryRow(`SELECT COUNT(*) FROM usage WHERE subject = ?`, "dev:"+target).Scan(&usage); err != nil {
+		t.Fatal(err)
+	}
+	if usage != 0 {
+		t.Errorf("%d usage rows survived", usage)
+	}
+	var kept int
+	if err := db.QueryRow(`SELECT COUNT(*) FROM usage WHERE subject = ?`, "dev:"+keep).Scan(&kept); err != nil {
+		t.Fatal(err)
+	}
+	if kept != 2 {
+		t.Errorf("other device's usage = %d rows, want 2", kept)
+	}
+	blocks, err := db.Blocks()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(blocks) != 0 {
+		t.Errorf("block survived: %+v", blocks)
+	}
+	events, err := db.Events(100)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(events) != 1 || events[0].Subject != "dev:"+keep {
+		t.Errorf("events = %+v, want only the other device's", events)
+	}
+}
+
 func TestSetLastUsed(t *testing.T) {
 	db, err := Open(filepath.Join(t.TempDir(), "t.db"))
 	if err != nil {
