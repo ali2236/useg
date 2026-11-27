@@ -654,7 +654,7 @@ func TestAdminDataCycle(t *testing.T) {
 	}
 
 	body := do(h, "GET", "/admin?lang=en", "10.66.0.3:5000", nil, cookie).Body.String()
-	for _, want := range []string{`id="tab-data"`, "Data cycle", "Data settings", "Allocate equally", "Allocate by weight", "Add / remove (GB)", "Start a new cycle", `id="data-charts"`, "Allocation by person", "Usage by person", `width: 36%`} {
+	for _, want := range []string{`id="tab-data"`, "Data cycle", "Data settings", "Allocate equally", "Allocate by weight", "Add / remove (GB)", "Start a new cycle", "Sync with ISP", "ISP remaining (GB)", `formaction="/admin/data/remove"`, `id="data-charts"`, "Allocation by person", "Usage by person", `width: 37%`} {
 		if !strings.Contains(body, want) {
 			t.Errorf("data tab missing %q", want)
 		}
@@ -710,6 +710,54 @@ func TestAdminDataCycle(t *testing.T) {
 	if p.GuestPool == nil || *p.GuestPool != 625e7 {
 		t.Fatalf("guest allocate = %v", p.GuestPool)
 	}
+
+	// Sync adds the ISP's larger remaining figure to the unallocated pool, and
+	// never takes data away when the ISP reports less.
+	do(h, "POST", "/admin/data/sync", "10.66.0.3:5000", url.Values{"remaining_gb": {"17"}}, cookie)
+	p, _ = db.CurrentPeriod(time.Now().Unix())
+	if p.PoolCharged == nil || *p.PoolCharged != 21e9 {
+		t.Fatalf("pool after sync = %v, want 21 GB", p.PoolCharged)
+	}
+	rec = do(h, "POST", "/admin/data/sync", "10.66.0.3:5000", url.Values{"remaining_gb": {"10"}}, cookie)
+	if loc := rec.Header().Get("Location"); !strings.Contains(loc, "err=") {
+		t.Fatalf("lower ISP remaining redirect = %q", loc)
+	}
+	p, _ = db.CurrentPeriod(time.Now().Unix())
+	if p.PoolCharged == nil || *p.PoolCharged != 21e9 {
+		t.Fatalf("lower ISP remaining changed the pool to %v", p.PoolCharged)
+	}
+	// Half a charged byte rounds up, so the same ISP figure adds one less byte
+	// of headroom than truncation would leave.
+	if err := db.UpsertUsage(p.ID, []store.UsageRow{{
+		Subject: "person:" + strconv.FormatInt(sara, 10), RouteID: 1, ClassID: 1, Charged: 0.5,
+	}}); err != nil {
+		t.Fatal(err)
+	}
+	do(h, "POST", "/admin/data/sync", "10.66.0.3:5000", url.Values{"remaining_gb": {"17"}}, cookie)
+	p, _ = db.CurrentPeriod(time.Now().Unix())
+	if p.PoolCharged == nil || *p.PoolCharged != 21000000001 {
+		t.Fatalf("pool after fractional sync = %v, want one extra byte from rounding up", p.PoolCharged)
+	}
+
+	// Removing only touches the unallocated remainder: it never dips into
+	// allocated shares, and stops at zero unallocated.
+	do(h, "POST", "/admin/data/remove", "10.66.0.3:5000", url.Values{"gb": {"1"}}, cookie)
+	p, _ = db.CurrentPeriod(time.Now().Unix())
+	if p.PoolCharged == nil || *p.PoolCharged != 20000000001 {
+		t.Fatalf("pool after remove = %v, want 20 GB", p.PoolCharged)
+	}
+	if p.RawCeiling == nil || *p.RawCeiling != 20000000001 {
+		t.Fatalf("ceiling after remove = %v, want it to mirror the pool", p.RawCeiling)
+	}
+	do(h, "POST", "/admin/data/remove", "10.66.0.3:5000", url.Values{"gb": {"100"}}, cookie)
+	p, _ = db.CurrentPeriod(time.Now().Unix())
+	if p.PoolCharged == nil || *p.PoolCharged != 1675e7 {
+		t.Fatalf("remove should clamp to the unallocated remainder, got %v", p.PoolCharged)
+	}
+	rec = do(h, "POST", "/admin/data/remove", "10.66.0.3:5000", url.Values{"gb": {"1"}}, cookie)
+	if loc := rec.Header().Get("Location"); !strings.Contains(loc, "err=") {
+		t.Fatalf("remove with nothing unallocated redirect = %q", loc)
+	}
 }
 
 func TestAdminMonthlyDataSettings(t *testing.T) {
@@ -756,6 +804,12 @@ func TestAdminMonthlyDataSettings(t *testing.T) {
 	}
 	if strings.Contains(body, "Add / remove (GB)") {
 		t.Error("allocate controls should only show inside a data cycle")
+	}
+	if strings.Contains(body, "Sync with ISP") {
+		t.Error("ISP sync should only show inside a data cycle")
+	}
+	if strings.Contains(body, `formaction="/admin/data/remove"`) {
+		t.Error("removing pool data should only show inside a data cycle")
 	}
 }
 

@@ -3,6 +3,7 @@ package web
 import (
 	"fmt"
 	"html/template"
+	"math"
 	"strconv"
 	"strings"
 	"time"
@@ -187,10 +188,18 @@ var messages = map[string][2]string{
 	"data.reset_btn":   {"شروع چرخه", "Start cycle"},
 	"data.reset_warn": {"مصرف قبلی در دوره خودش می‌ماند. تا وقتی حجم تخصیص ندهید، افراد و مهمان‌ها داده‌ای ندارند.",
 		"Old usage stays in its own cycle. Until you allocate, people and guests have no data."},
-	"data.add":      {"افزودن حجم", "Add data"},
-	"data.add_hint": {"حجم تازه به بخش تخصیص‌نیافته اضافه می‌شود.", "Adds to the unallocated pool."},
-	"data.add_btn":  {"افزودن", "Add"},
-	"data.equal":    {"تقسیم مساوی", "Allocate equally"},
+	"data.add":        {"افزودن / کاهش حجم", "Add / remove data"},
+	"data.add_hint":   {"افزودن به بخش تخصیص‌نیافته؛ کاهش فقط از بخش تخصیص‌نیافته برمی‌دارد.", "Adds to the unallocated pool; remove takes only from the unallocated remainder."},
+	"data.add_btn":    {"افزودن", "Add"},
+	"data.remove_btn": {"کاهش", "Remove"},
+	"data.removed_ok": {"حجم از تخصیص‌نیافته کم شد", "removed from unallocated"},
+	"data.sync":       {"همگام‌سازی با ISP", "Sync with ISP"},
+	"data.sync_hint": {"باقی‌مانده داده را از صفحه ISP وارد کنید؛ اختلاف با دفتر مصرف به بخش تخصیص‌نیافته اضافه می‌شود.",
+		"Enter the remaining data from the ISP page; the difference with the ledger is added to the unallocated pool."},
+	"data.sync_remaining": {"باقی‌مانده ISP (GB)", "ISP remaining (GB)"},
+	"data.sync_btn":       {"همگام‌سازی", "Sync"},
+	"data.synced_ok":      {"همگام‌سازی انجام شد", "synced"},
+	"data.equal":          {"تقسیم مساوی", "Allocate equally"},
 	"data.equal_hint": {"باقی‌مانده تخصیص‌نیافته به‌طور مساوی بین افراد و مهمان‌ها تقسیم می‌شود.",
 		"Splits the unallocated remainder equally across people and guests."},
 	"data.equal_btn": {"تقسیم مساوی", "Split equally"},
@@ -312,11 +321,13 @@ func Bytes(n int64, l string) string {
 	return s
 }
 
+// percent rounds the share up, so a usage percentage never reads lower than
+// the bytes behind it.
 func percent(used, cap int64) int {
 	if cap <= 0 {
 		return 0
 	}
-	p := int(float64(used) / float64(cap) * 100)
+	p := int(math.Ceil(float64(used) / float64(cap) * 100))
 	if p > 100 {
 		p = 100
 	}

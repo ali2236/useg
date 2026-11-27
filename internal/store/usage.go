@@ -1,6 +1,18 @@
 package store
 
-import "database/sql"
+import (
+	"database/sql"
+	"math"
+)
+
+// ChargedBytes rounds a charged ledger value up: a fraction of a byte is still
+// bytes spent, so measurement must never come out below the ledger.
+func ChargedBytes(charged float64) int64 {
+	if charged <= 0 {
+		return 0
+	}
+	return int64(math.Ceil(charged))
+}
 
 type UsageRow struct {
 	Subject string

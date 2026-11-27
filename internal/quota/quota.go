@@ -82,9 +82,9 @@ func Compute(in Input) Decision {
 			continue
 		}
 		subj := PersonSubject(p.ID)
-		used := int64(in.Totals[subj].Charged)
+		used := store.ChargedBytes(in.Totals[subj].Charged)
 		for _, mac := range owned[p.ID] {
-			used += int64(in.Totals[DeviceSubject(mac)].Charged)
+			used += store.ChargedBytes(in.Totals[DeviceSubject(mac)].Charged)
 		}
 		st := Status{Subject: subj, Used: used, Cap: -1}
 		if in.Manual {
@@ -118,7 +118,7 @@ func Compute(in Input) Decision {
 	var guestUsed int64
 	for _, d := range in.Devices {
 		if d.Owner == nil {
-			guestUsed += int64(in.Totals[DeviceSubject(d.MAC)].Charged)
+			guestUsed += store.ChargedBytes(in.Totals[DeviceSubject(d.MAC)].Charged)
 		}
 	}
 	// What the pool still holds for guests; -1 means no shared bound. The
@@ -134,7 +134,7 @@ func Compute(in Input) Decision {
 			continue
 		}
 		subj := DeviceSubject(d.MAC)
-		st := Status{Subject: subj, Used: int64(in.Totals[subj].Charged), Cap: in.GuestDeviceBytes, Guest: true}
+		st := Status{Subject: subj, Used: store.ChargedBytes(in.Totals[subj].Charged), Cap: in.GuestDeviceBytes, Guest: true}
 		if poolLeft >= 0 && (st.Cap < 0 || st.Used+poolLeft < st.Cap) {
 			st.Cap = st.Used + poolLeft
 		}

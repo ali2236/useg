@@ -284,7 +284,17 @@
         <div class="muted small">{{T $l "data.add_hint"}}</div>
       </div>
       <input class="input input-sm" type="number" step="0.01" min="0.01" name="gb" placeholder="GB" aria-label="{{T $l "data.data"}}" style="width:110px" required>
+      <button class="btn btn-sm btn-secondary" formaction="/admin/data/remove">{{T $l "data.remove_btn"}}</button>
       <button class="btn btn-sm btn-secondary">{{T $l "data.add_btn"}}</button>
+    </form>
+
+    <form method="post" action="/admin/data/sync" class="card row" style="justify-content:space-between">
+      <div style="flex:1 1 240px">
+        <strong>{{T $l "data.sync"}}</strong>
+        <div class="muted small">{{T $l "data.sync_hint"}}</div>
+      </div>
+      <input class="input input-sm" type="number" step="0.01" min="0" name="remaining_gb" placeholder="GB" aria-label="{{T $l "data.sync_remaining"}}" style="width:110px" required>
+      <button class="btn btn-sm btn-secondary">{{T $l "data.sync_btn"}}</button>
     </form>
 
     <form method="post" action="/admin/data/allocate-equal" class="card row" style="justify-content:space-between">

@@ -320,7 +320,7 @@ func (s *Server) adminData(r *http.Request, flash, errMsg string) (*adminData, e
 	}
 	var guestUsed int64
 	for _, dv := range devices {
-		used := int64(in.Totals[quota.DeviceSubject(dv.MAC)].Charged)
+		used := store.ChargedBytes(in.Totals[quota.DeviceSubject(dv.MAC)].Charged)
 		if dv.Owner == nil {
 			guestUsed += used
 		}
@@ -366,7 +366,7 @@ func (s *Server) adminData(r *http.Request, flash, errMsg string) (*adminData, e
 	})
 	// Household charged includes guests; person rows already fold in devices.
 	for _, t := range in.Totals {
-		d.Charged += int64(t.Charged)
+		d.Charged += store.ChargedBytes(t.Charged)
 	}
 
 	// nft counts everything that crossed prerouting; the ledger only counts what
@@ -456,7 +456,7 @@ func (s *Server) adminData(r *http.Request, flash, errMsg string) (*adminData, e
 	for _, u := range detail {
 		d.Usage = append(d.Usage, usageRow{
 			Subject: u.Subject, Route: routeName[u.RouteID], Class: className[u.ClassID],
-			Up: u.Up, Down: u.Down, Charged: int64(u.Charged),
+			Up: u.Up, Down: u.Down, Charged: store.ChargedBytes(u.Charged),
 		})
 	}
 
@@ -588,6 +588,10 @@ func (s *Server) admin(w http.ResponseWriter, r *http.Request) {
 		err = s.postDataReset(r)
 	case "/admin/data/add":
 		err = s.postDataAdd(r)
+	case "/admin/data/sync":
+		err = s.postDataSync(r)
+	case "/admin/data/remove":
+		err = s.postDataRemove(r)
 	case "/admin/data/allocate-equal":
 		err = s.postDataAllocate(r, false)
 	case "/admin/data/allocate-weight":
@@ -619,6 +623,10 @@ func (s *Server) admin(w http.ResponseWriter, r *http.Request) {
 		flash = "data.reset_ok"
 	case "/admin/data/add":
 		flash = "data.added_ok"
+	case "/admin/data/sync":
+		flash = "data.synced_ok"
+	case "/admin/data/remove":
+		flash = "data.removed_ok"
 	case "/admin/data/allocate-equal", "/admin/data/allocate-weight":
 		flash = "data.allocated_ok"
 	case "/admin/data/allocate":
@@ -709,6 +717,99 @@ func (s *Server) postDataAdd(r *http.Request) error {
 	}
 	return s.db.AddEvent("data_add", "period:"+strconv.FormatInt(period.ID, 10),
 		fmt.Sprintf("+%.2f GB, total %.2f GB", gb, float64(total)/1e9))
+}
+
+// postDataSync reconciles the ledger with the ISP's page. The difference
+// between the ISP's remaining data and our remaining pool is added to the
+// unallocated pool; a lower ISP figure never takes data or usage away.
+func (s *Server) postDataSync(r *http.Request) error {
+	remaining, err := formGB(r, "remaining_gb")
+	if err != nil {
+		return err
+	}
+	if remaining == nil || *remaining < 0 {
+		return fmt.Errorf("ISP remaining GB is required")
+	}
+	period, err := s.db.EnsurePeriod(time.Now(), s.loc)
+	if err != nil {
+		return err
+	}
+	if period.AllocMode != "manual" {
+		return fmt.Errorf("start a data cycle first")
+	}
+	in, err := quota.Gather(s.db, period)
+	if err != nil {
+		return err
+	}
+	s.withPending(&in)
+	var used int64
+	for _, t := range in.Totals {
+		used += store.ChargedBytes(t.Charged)
+	}
+	var pool int64
+	if period.PoolCharged != nil {
+		pool = *period.PoolCharged
+	}
+	left := pool - used
+	if left < 0 {
+		left = 0
+	}
+	diff := *remaining - left
+	if diff <= 0 {
+		return fmt.Errorf("ISP remaining does not exceed the ledger; nothing to add")
+	}
+	total, err := s.db.AddPool(period.ID, diff)
+	if err != nil {
+		return err
+	}
+	return s.db.AddEvent("data_sync", "period:"+strconv.FormatInt(period.ID, 10),
+		fmt.Sprintf("ISP %.2f GB, +%.2f GB, total %.2f GB",
+			float64(*remaining)/1e9, float64(diff)/1e9, float64(total)/1e9))
+}
+
+// postDataRemove takes data back out of the unallocated pool. Allocated shares
+// are untouchable, so it clamps to what is still unallocated.
+func (s *Server) postDataRemove(r *http.Request) error {
+	gb := floatDefault(r.FormValue("gb"), 0)
+	if gb <= 0 {
+		return fmt.Errorf("data GB must be positive")
+	}
+	period, err := s.db.EnsurePeriod(time.Now(), s.loc)
+	if err != nil {
+		return err
+	}
+	if period.AllocMode != "manual" {
+		return fmt.Errorf("start a data cycle first")
+	}
+	var pool int64
+	if period.PoolCharged != nil {
+		pool = *period.PoolCharged
+	}
+	var allocated int64
+	if period.GuestPool != nil {
+		allocated = *period.GuestPool
+	}
+	allocs, err := s.db.Allocations(period.ID)
+	if err != nil {
+		return err
+	}
+	for _, b := range allocs {
+		allocated += b
+	}
+	unallocated := pool - allocated
+	if unallocated <= 0 {
+		return fmt.Errorf("nothing unallocated to remove")
+	}
+	b := int64(gb * 1e9)
+	if b > unallocated {
+		b = unallocated
+	}
+	total, err := s.db.ReducePool(period.ID, b)
+	if err != nil {
+		return err
+	}
+	return s.db.AddEvent("data_remove", "period:"+strconv.FormatInt(period.ID, 10),
+		fmt.Sprintf("-%.2f GB, total %.2f GB", float64(b)/1e9, float64(total)/1e9))
 }
 
 // postDataAllocate tops up the unallocated remainder. Equal is the same split
@@ -1041,7 +1142,7 @@ func (s *Server) postDataUnallocateRow(r *http.Request) error {
 		}
 		for _, d := range in.Devices {
 			if d.Owner == nil {
-				used += int64(in.Totals[quota.DeviceSubject(d.MAC)].Charged)
+				used += store.ChargedBytes(in.Totals[quota.DeviceSubject(d.MAC)].Charged)
 			}
 		}
 	} else {
@@ -1050,10 +1151,10 @@ func (s *Server) postDataUnallocateRow(r *http.Request) error {
 			return err
 		}
 		alloc = allocs[pid]
-		used = int64(in.Totals[quota.PersonSubject(pid)].Charged)
+		used = store.ChargedBytes(in.Totals[quota.PersonSubject(pid)].Charged)
 		for _, d := range in.Devices {
 			if d.Owner != nil && *d.Owner == pid {
-				used += int64(in.Totals[quota.DeviceSubject(d.MAC)].Charged)
+				used += store.ChargedBytes(in.Totals[quota.DeviceSubject(d.MAC)].Charged)
 			}
 		}
 	}

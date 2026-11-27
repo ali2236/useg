@@ -260,7 +260,7 @@ func (s *Server) portal(w http.ResponseWriter, r *http.Request) {
 			}
 			page.Devices = append(page.Devices, portalDevice{
 				Name:    deviceLabel(d),
-				Used:    int64(in.Totals[quota.DeviceSubject(d.MAC)].Charged),
+				Used:    store.ChargedBytes(in.Totals[quota.DeviceSubject(d.MAC)].Charged),
 				Current: d.MAC == dev.MAC,
 				Blocked: dec.Blocked[d.MAC] != "",
 			})
@@ -544,7 +544,7 @@ func (s *Server) sub(w http.ResponseWriter, r *http.Request) {
 		if d.Owner == nil || *d.Owner != person.ID {
 			continue
 		}
-		used := int64(in.Totals[quota.DeviceSubject(d.MAC)].Charged)
+		used := store.ChargedBytes(in.Totals[quota.DeviceSubject(d.MAC)].Charged)
 		title := deviceLabel(d) + " · " + Bytes(used, locale)
 		lines = append(lines, fmt.Sprintf("%s?%s#%s", noConnect, q.Encode(), url.PathEscape(title)))
 	}

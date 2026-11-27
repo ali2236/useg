@@ -343,6 +343,32 @@ func (d *DB) AddPool(periodID, bytes int64) (int64, error) {
 	return total.Int64, nil
 }
 
+// ReducePool takes data back out of a manual cycle's unallocated pool. Callers
+// clamp bytes to the unallocated remainder, so allocated shares never shrink.
+func (d *DB) ReducePool(periodID, bytes int64) (int64, error) {
+	if bytes <= 0 {
+		return 0, fmt.Errorf("data amount must be positive")
+	}
+	res, err := d.Exec(`UPDATE period SET
+			pool_charged = MAX(COALESCE(pool_charged, 0) - ?, 0),
+			raw_ceiling = MAX(COALESCE(raw_ceiling, 0) - ?, 0)
+		WHERE id = ? AND alloc_mode = 'manual'`, bytes, bytes, periodID)
+	if err != nil {
+		return 0, err
+	}
+	if n, _ := res.RowsAffected(); n == 0 {
+		return 0, fmt.Errorf("start a data cycle first")
+	}
+	var total sql.NullInt64
+	if err := d.QueryRow(`SELECT pool_charged FROM period WHERE id = ?`, periodID).Scan(&total); err != nil {
+		return 0, err
+	}
+	if err := d.SetSetting("pool_charged_gb", gbString(total.Int64)); err != nil {
+		return 0, err
+	}
+	return total.Int64, nil
+}
+
 // Allocations returns person_id -> bytes for one period.
 func (d *DB) Allocations(periodID int64) (map[int64]int64, error) {
 	rows, err := d.Query(`SELECT person_id, bytes FROM allocation WHERE period_id = ?`, periodID)
