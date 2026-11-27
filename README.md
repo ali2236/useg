@@ -18,6 +18,8 @@ quota loop, portal, subscription endpoint, admin UI).
 
 ![Admin — People](docs/admin-people.png)
 
+![Portal — remaining quota and devices](docs/portal.png)
+
 ## What it does
 
 - **Meters the LAN without touching devices.** nftables TPROXY on a single NIC
