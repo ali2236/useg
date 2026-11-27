@@ -217,18 +217,21 @@ type Device struct {
 	Name       string
 	FirstSeen  int64
 	LastSeen   int64
+	LastUsed   int64
 	Owner      *int64
 	BoundAt    *int64
 	BindSource string
 }
 
 const deviceCols = `mac, COALESCE(ip,''), COALESCE(hostname,''), COALESCE(name,''),
-	COALESCE(first_seen,0), COALESCE(last_seen,0), owner_person_id, bound_at, COALESCE(bind_source,'')`
+	COALESCE(first_seen,0), COALESCE(last_seen,0), COALESCE(last_used,0),
+	owner_person_id, bound_at, COALESCE(bind_source,'')`
 
 func scanDevice(sc interface{ Scan(...any) error }) (Device, error) {
 	var dv Device
 	var owner, bound sql.NullInt64
-	err := sc.Scan(&dv.MAC, &dv.IP, &dv.Hostname, &dv.Name, &dv.FirstSeen, &dv.LastSeen, &owner, &bound, &dv.BindSource)
+	err := sc.Scan(&dv.MAC, &dv.IP, &dv.Hostname, &dv.Name, &dv.FirstSeen, &dv.LastSeen,
+		&dv.LastUsed, &owner, &bound, &dv.BindSource)
 	if owner.Valid {
 		dv.Owner = &owner.Int64
 	}
@@ -294,6 +297,28 @@ func (d *DB) SetDeviceName(ip, name string) error {
 	_, err := d.Exec(`UPDATE device SET name = ?
 		WHERE ip = ? AND (name IS NULL OR name <> ?)`, name, ip, name)
 	return err
+}
+
+// SetLastUsed stamps when these devices last moved bytes. Called from the
+// flush, which already batches the usage writes, so the DB sees one statement
+// per device per flush window at most.
+func (d *DB) SetLastUsed(at int64, macs []string) error {
+	if len(macs) == 0 {
+		return nil
+	}
+	return d.tx(func(tx *sql.Tx) error {
+		stmt, err := tx.Prepare(`UPDATE device SET last_used = ? WHERE mac = ?`)
+		if err != nil {
+			return err
+		}
+		defer stmt.Close()
+		for _, mac := range macs {
+			if _, err := stmt.Exec(at, mac); err != nil {
+				return err
+			}
+		}
+		return nil
+	})
 }
 
 func (d *DB) Bind(mac string, personID int64, source string, now int64) error {

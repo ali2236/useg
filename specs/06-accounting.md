@@ -48,7 +48,11 @@ Stated plainly because quota systems live or die on this:
 The ledger contains WAN traffic only. LAN-to-LAN, multicast (mDNS, SSDP),
 broadcast, link-local and traffic to the box are accepted before TPROXY and
 never reach the proxy; the accountant also drops any flow whose destination is
-local, so those bytes can never be charged even if the ruleset is stale.
+local, so those bytes can never be charged even if the ruleset is stale. A lane
+B client that resolves names at the proxy sends the destination as a name, so
+the box's own names (`portal.gate`, `wifi.net`, `*.local`, `*.home.arpa`,
+`localhost`) are matched too: resolving them on the box must not turn the admin
+page into metered traffic.
 
 **Drift check, not enforcement:** nftables keeps per-source-IP raw counters
 (upload in prerouting, download in postrouting, because the proxy replies carry

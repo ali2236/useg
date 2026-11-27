@@ -111,7 +111,7 @@ var messages = map[string][2]string{
 	"th.owner":        {"مالک", "owner"},
 	"th.usage":        {"مصرف", "usage"},
 	"th.state":        {"وضعیت", "state"},
-	"th.last_seen":    {"آخرین حضور", "last seen"},
+	"th.last_used":    {"آخرین استفاده", "last used"},
 	"th.kind":         {"نوع", "kind"},
 	"th.access":       {"دسترسی", "access"},
 	"th.upstream":     {"خروجی JSON", "upstream json"},

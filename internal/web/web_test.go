@@ -628,6 +628,45 @@ func TestDomesticTabRefreshAndPaging(t *testing.T) {
 	}
 }
 
+func TestDevicesTabSortsByLastUse(t *testing.T) {
+	srv, db, _, _ := tserver(t)
+	h := srv.AdminHandler()
+	now := time.Now().Unix()
+	for _, d := range [][2]string{
+		{"dd:ee:ff:00:00:01", "10.66.0.7"},
+		{"dd:ee:ff:00:00:02", "10.66.0.8"},
+	} {
+		if err := db.UpsertLease(d[0], d[1], "phone", now-3600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	// The device that just moved bytes must come before one that never did,
+	// even though both have leases.
+	if err := db.SetLastUsed(now+60, []string{"dd:ee:ff:00:00:01"}); err != nil {
+		t.Fatal(err)
+	}
+
+	ok := do(h, "POST", "/admin/login", "10.66.0.3:5000", url.Values{"password": {"pw"}}, nil)
+	var cookie *http.Cookie
+	for _, c := range ok.Result().Cookies() {
+		if c.Name == sessionCookie {
+			cookie = c
+		}
+	}
+	if cookie == nil {
+		t.Fatal("no session cookie")
+	}
+	body := do(h, "GET", "/admin?lang=en", "10.66.0.3:5000", nil, cookie).Body.String()
+	if !strings.Contains(body, "last used") {
+		t.Error("devices tab needs a last-used column")
+	}
+	used := strings.Index(body, "dd:ee:ff:00:00:01")
+	never := strings.Index(body, "dd:ee:ff:00:00:02")
+	if used < 0 || never < 0 || used > never {
+		t.Errorf("devices order: recently used at %d, never used at %d", used, never)
+	}
+}
+
 func discardLogger() *slog.Logger {
 	return slog.New(slog.NewTextHandler(io.Discard, nil))
 }

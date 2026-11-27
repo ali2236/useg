@@ -92,8 +92,13 @@ func New(db *store.DB, clash *singbox.Client, log *slog.Logger, lanCIDR, boxIP s
 // localDest is the accounting-side guarantee that only traffic leaving the LAN
 // is metered. The nft rules already keep local destinations out of the proxy;
 // this catches a stale ruleset, a moved box IP, or a proxy that accepted a
-// multicast packet anyway.
-func (a *Accountant) localDest(dst string) bool {
+// multicast packet anyway. A lane-B client can also send the box's own name as
+// the destination (resolved by us, not by the client), so names are checked
+// before IPs.
+func (a *Accountant) localDest(dst, host string) bool {
+	if isLocalName(dst) || isLocalName(host) {
+		return true
+	}
 	addr, err := netip.ParseAddr(dst)
 	if err != nil {
 		return false // unknown/domain destination: not local
@@ -113,6 +118,32 @@ func (a *Accountant) localDest(dst string) bool {
 		b := addr.As4()
 		// limited broadcast and the reserved/experimental ranges
 		if b == [4]byte{255, 255, 255, 255} || b[0] == 0 || b[0] >= 240 {
+			return true
+		}
+	}
+	return false
+}
+
+// localNames are the names dnsmasq answers with the box's own address (see
+// deploy/dnsmasq-useg.conf). shortcut: an alias added there must be added here
+// too; move this to config if the alias list starts changing.
+var localNames = []string{"portal.gate", "wifi.net"}
+
+// isLocalName reports whether s names the box or the LAN itself. Ports are
+// tolerated because sniffed hosts can carry them.
+func isLocalName(s string) bool {
+	n := strings.ToLower(strings.TrimSuffix(strings.TrimSpace(s), "."))
+	if i := strings.IndexByte(n, ':'); i >= 0 {
+		n = n[:i]
+	}
+	if n == "" {
+		return false
+	}
+	if n == "localhost" || strings.HasSuffix(n, ".local") || strings.HasSuffix(n, ".home.arpa") {
+		return true
+	}
+	for _, l := range localNames {
+		if n == l || strings.HasSuffix(n, "."+l) {
 			return true
 		}
 	}
@@ -221,7 +252,7 @@ func hostOf(c singbox.Conn) string {
 }
 
 func (a *Accountant) newFlow(c singbox.Conn, now time.Time) *flow {
-	if a.localDest(c.Metadata.DestinationIP) {
+	if a.localDest(c.Metadata.DestinationIP, hostOf(c)) {
 		return nil
 	}
 	f := &flow{up: c.Upload, down: c.Download}
@@ -382,11 +413,15 @@ func (a *Accountant) flushLocked(now time.Time) {
 		return
 	}
 	rows := make([]store.UsageRow, 0, len(a.buckets))
+	used := map[string]bool{}
 	for k, b := range a.buckets {
 		rows = append(rows, store.UsageRow{
 			Subject: k.subject, RouteID: k.routeID, ClassID: k.classID,
 			Up: b.up, Down: b.down, Charged: b.charged,
 		})
+		if mac, ok := deviceMAC(k.subject); ok {
+			used[mac] = true
+		}
 	}
 	sort.Slice(rows, func(i, j int) bool {
 		if rows[i].Subject != rows[j].Subject {
@@ -405,9 +440,28 @@ func (a *Accountant) flushLocked(now time.Time) {
 		a.log.Error("flush usage", "err", err)
 		return
 	}
+	if len(used) > 0 {
+		macs := make([]string, 0, len(used))
+		for mac := range used {
+			macs = append(macs, mac)
+		}
+		if err := a.db.SetLastUsed(now.Unix(), macs); err != nil {
+			a.log.Error("record device last use", "err", err)
+		}
+	}
 	a.log.Debug("usage flushed", "rows", len(rows))
 	a.buckets = map[bucketKey]*bucket{}
 	a.lastFlush = now
+}
+
+// deviceMAC extracts the MAC from a device subject. dev:ip:<addr> flows have
+// no device row, so they cannot carry a last-used stamp.
+func deviceMAC(subject string) (string, bool) {
+	mac, ok := strings.CutPrefix(subject, "dev:")
+	if !ok || mac == "" || strings.HasPrefix(mac, "ip:") {
+		return "", false
+	}
+	return mac, true
 }
 
 // Pending exposes the unflushed buckets. The quota tick and the UI must see

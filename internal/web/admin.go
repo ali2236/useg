@@ -37,6 +37,7 @@ type deviceRow struct {
 	Used        int64
 	BlockReason string
 	LastSeen    string
+	LastUsed    string
 	OwnerName   string
 	GuestCap    int64
 	GuestPct    int
@@ -141,6 +142,15 @@ type adminData struct {
 	DomesticHasNext   bool
 	DomesticQuery     string
 	DomesticRefreshed string
+}
+
+// deviceActivity is the last time a device did something visible: moved bytes,
+// or first appeared in a lease if it has never been used.
+func deviceActivity(dv store.Device) int64 {
+	if dv.LastUsed > dv.FirstSeen {
+		return dv.LastUsed
+	}
+	return dv.FirstSeen
 }
 
 func (s *Server) adminData(r *http.Request, flash, errMsg string) (*adminData, error) {
@@ -320,6 +330,9 @@ func (s *Server) adminData(r *http.Request, flash, errMsg string) (*adminData, e
 		if dv.LastSeen > 0 {
 			row.LastSeen = time.Unix(dv.LastSeen, 0).In(s.loc).Format("01-02 15:04")
 		}
+		if dv.LastUsed > 0 {
+			row.LastUsed = time.Unix(dv.LastUsed, 0).In(s.loc).Format("01-02 15:04")
+		}
 		if row.BlockReason != "" {
 			d.BlockedCount++
 		}
@@ -342,6 +355,11 @@ func (s *Server) adminData(r *http.Request, flash, errMsg string) (*adminData, e
 	}
 	sort.SliceStable(d.Connected, func(i, j int) bool { return d.Connected[i].Used > d.Connected[j].Used })
 	sort.SliceStable(d.Guests, func(i, j int) bool { return d.Guests[i].Used > d.Guests[j].Used })
+	// Most recently active first: the device that just joined (first_seen) or
+	// just moved bytes (last_used) is the one the admin is looking for.
+	sort.SliceStable(d.Devices, func(i, j int) bool {
+		return deviceActivity(d.Devices[i].D) > deviceActivity(d.Devices[j].D)
+	})
 	// Household charged includes guests; person rows already fold in devices.
 	for _, t := range in.Totals {
 		d.Charged += int64(t.Charged)

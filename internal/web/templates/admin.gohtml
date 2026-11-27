@@ -446,11 +446,11 @@
   <div class="page-head"><h2>{{T $l "devices.title"}}</h2></div>
   <div class="card table-wrap">
   <table class="table">
-    <thead><tr><th scope="col">{{T $l "th.device"}}</th><th scope="col">{{T $l "th.ip"}}</th><th scope="col">{{T $l "th.owner"}}</th><th scope="col">{{T $l "th.usage"}}</th><th scope="col">{{T $l "th.state"}}</th><th scope="col">{{T $l "th.last_seen"}}</th></tr></thead>
+    <thead><tr><th scope="col">{{T $l "th.device"}}</th><th scope="col">{{T $l "th.ip"}}</th><th scope="col">{{T $l "th.owner"}}</th><th scope="col">{{T $l "th.usage"}}</th><th scope="col">{{T $l "th.state"}}</th><th scope="col">{{T $l "th.last_used"}}</th></tr></thead>
     <tbody>
     {{range .Devices}}
     <tr{{if .BlockReason}} class="is-blocked"{{end}}>
-      <td>{{deviceName .D}}<div class="muted small">{{.D.MAC}}{{if .D.BindSource}} · {{.D.BindSource}}{{end}}</div></td>
+      <td>{{deviceName .D}}<div class="muted small">{{if .OwnerName}}{{.OwnerName}}{{else}}{{T $l "devices.guest"}}{{end}} · {{.D.MAC}}{{if .D.BindSource}} · {{.D.BindSource}}{{end}}</div></td>
       <td class="num">{{.D.IP}}</td>
       <td>
         <form method="post" action="/admin/device" class="row">
@@ -466,7 +466,7 @@
       </td>
       <td class="num">{{bytes .Used $l}}</td>
       <td>{{if .BlockReason}}<span class="badge badge-danger">{{reason $l .BlockReason}}</span>{{else}}<span class="badge badge-neutral">{{T $l "devices.ok"}}</span>{{end}}</td>
-      <td class="num">{{.LastSeen}}</td>
+      <td class="num">{{if .LastUsed}}{{.LastUsed}}{{else}}—{{end}}</td>
     </tr>
     {{end}}
     </tbody>

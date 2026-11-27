@@ -4,7 +4,7 @@ SQLite in WAL mode, one file, backed up by copying.
 
 ```sql
 person(id, name, weight, cap_override, enabled, sub_token, created_at, locale)
-device(mac PK, ip, hostname, name, first_seen, last_seen,
+device(mac PK, ip, hostname, name, first_seen, last_seen, last_used,
        owner_person_id, bound_at, bind_source)
 
 route(id, name, kind, upstream_json, allow_all, enabled)
@@ -35,6 +35,11 @@ Notes:
   advertises over mDNS. The UI shows `name`, then a prettified `hostname`, then
   the MAC. A name is never invented: when a phone advertises neither, the MAC
   stays.
+- `last_seen` is the lease poll, stamped for every device still in the lease
+  file, so it cannot tell a device that just joined from one that has been here
+  all week. `last_used` is when the accountant last booked bytes for it, written
+  with the usage flush; the Devices tab sorts by the later of `last_used` and
+  `first_seen`.
 - Every quota-affecting change writes an `event` row. The audit log is the
   same table.
 - Schema migrations are numbered SQL files applied at startup.

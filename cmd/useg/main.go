@@ -183,7 +183,8 @@ func cmdServer(args []string) error {
 
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
-	go namesLoop(ctx, db, cfg, log)
+	wakeNames := make(chan struct{}, 1)
+	go namesLoop(ctx, db, cfg, log, wakeNames)
 
 	periodTick := func(now time.Time) {
 		p, err := db.EnsurePeriod(now, cfg.Location())
@@ -197,6 +198,7 @@ func cmdServer(args []string) error {
 
 	sup.Reconcile()
 
+	var lw leaseWatch
 	fast := time.NewTicker(time.Duration(cfg.PollMS) * time.Millisecond)
 	defer fast.Stop()
 	slow := time.NewTicker(time.Second)
@@ -225,8 +227,13 @@ func cmdServer(args []string) error {
 				if err := quotaEng.Tick(now); err != nil {
 					log.Error("quota tick", "err", err)
 				}
-				if err := leasesTick(db, cfg, log, now); err != nil {
+				if joined, err := lw.tick(db, cfg, now); err != nil {
 					log.Debug("leases", "err", err)
+				} else if joined {
+					select {
+					case wakeNames <- struct{}{}:
+					default:
+					}
 				}
 			}
 			if i%10 == 0 {
@@ -241,7 +248,10 @@ func cmdServer(args []string) error {
 
 // namesLoop fills device.name with what devices advertise over mDNS. Best
 // effort: many phones never answer, and their DHCP hostname remains the name.
-func namesLoop(ctx context.Context, db *store.DB, cfg *config.Config, log *slog.Logger) {
+// It also runs when a lease appears for a device that was not there on the
+// previous poll, so a device that just joined gets its name while the admin is
+// still looking at the list.
+func namesLoop(ctx context.Context, db *store.DB, cfg *config.Config, log *slog.Logger, wake <-chan struct{}) {
 	iface, err := net.InterfaceByName(cfg.Iface)
 	if err != nil {
 		log.Debug("mdns: no interface", "iface", cfg.Iface, "err", err)
@@ -251,6 +261,12 @@ func namesLoop(ctx context.Context, db *store.DB, cfg *config.Config, log *slog.
 	case <-ctx.Done():
 		return
 	case <-time.After(30 * time.Second):
+	}
+	// The first lease poll always looks like a new device; the sweep below
+	// already covers it.
+	select {
+	case <-wake:
+	default:
 	}
 	tick := time.NewTicker(10 * time.Minute)
 	defer tick.Stop()
@@ -266,22 +282,42 @@ func namesLoop(ctx context.Context, db *store.DB, cfg *config.Config, log *slog.
 		case <-ctx.Done():
 			return
 		case <-tick.C:
+		case <-wake:
+			// Give the fresh device a moment to start answering.
+			select {
+			case <-ctx.Done():
+				return
+			case <-time.After(5 * time.Second):
+			}
 		}
 	}
 }
 
-// leasesTick is the device inventory's only writer on the LAN side.
-func leasesTick(db *store.DB, cfg *config.Config, log *slog.Logger, now time.Time) error {
+// leaseWatch is the device inventory's only writer on the LAN side. It keeps
+// the MAC set of the previous poll so a device that just joined (or whose lease
+// just reappeared) can be told apart from one that was already in the file.
+type leaseWatch struct {
+	seen map[string]bool
+}
+
+func (w *leaseWatch) tick(db *store.DB, cfg *config.Config, now time.Time) (bool, error) {
 	ls, err := leases.Read(cfg.LeasesFile)
 	if err != nil {
-		return err
+		return false, err
 	}
+	seen := make(map[string]bool, len(ls))
+	joined := false
 	for _, l := range ls {
+		seen[l.MAC] = true
+		if !w.seen[l.MAC] {
+			joined = true
+		}
 		if err := db.UpsertLease(l.MAC, l.IP, l.Hostname, now.Unix()); err != nil {
-			return err
+			return false, err
 		}
 	}
-	return nil
+	w.seen = seen
+	return joined, nil
 }
 
 // ---- migrate / seed ---------------------------------------------------------
@@ -401,7 +437,7 @@ func cmdSeed(args []string) error {
 		}
 	}
 
-	if err := leasesTick(db, cfg, logger(), time.Now()); err != nil {
+	if _, err := (&leaseWatch{}).tick(db, cfg, time.Now()); err != nil {
 		logger().Debug("no lease file at seed time", "path", cfg.LeasesFile, "err", err)
 	}
 

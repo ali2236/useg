@@ -25,15 +25,31 @@ func TestLocalDest(t *testing.T) {
 		"240.0.0.1",       // reserved
 	}
 	for _, ip := range local {
-		if !a.localDest(ip) {
+		if !a.localDest(ip, "") {
 			t.Errorf("%s should be local", ip)
 		}
 	}
 
 	wan := []string{"8.8.8.8", "1.1.1.1", "185.55.226.26", "2a00:1450::1", "", "example.com"}
 	for _, ip := range wan {
-		if a.localDest(ip) {
+		if a.localDest(ip, "") {
 			t.Errorf("%s should not be local", ip)
 		}
+	}
+
+	// A lane-B client can send the box's own name instead of an IP; resolving
+	// it on the box must not turn local traffic into usage.
+	names := []string{"wifi.net", "portal.gate", "portal.gate:8080", "WIFI.NET.",
+		"localhost", "nas.local", "printer.home.arpa"}
+	for _, n := range names {
+		if !a.localDest(n, "") {
+			t.Errorf("%s should be local when it arrives as a destination", n)
+		}
+	}
+	if !a.localDest("", "wifi.net") || !a.localDest("8.8.8.8", "wifi.net") {
+		t.Error("a local sniffed host must not be charged")
+	}
+	if a.localDest("", "example.com") || a.localDest("", "notwifi.net") {
+		t.Error("a public host must stay chargeable")
 	}
 }
