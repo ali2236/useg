@@ -104,20 +104,16 @@ func fragment(row string) string {
 	return s
 }
 
-// An OS connectivity probe must land on the portal, not on a 404, or the device
-// stays silent instead of showing its sign-in sheet.
-func TestCaptiveProbeRedirectsToPortal(t *testing.T) {
-	srv, _, cfg, _ := tserver(t)
+// The portal is reached by name, not by an OS connectivity sheet, so the
+// probe paths are ordinary 404s.
+func TestProbePathsAreNotFound(t *testing.T) {
+	srv, _, _, _ := tserver(t)
 	h := srv.PortalHandler()
-	want := "http://" + cfg.BoxIP + "/"
-	for _, path := range []string{"/hotspot-detect.html", "/generate_204", "/connecttest.txt", "/success.txt"} {
+	for _, path := range []string{"/hotspot-detect.html", "/generate_204", "/connecttest.txt", "/success.txt", "/nope"} {
 		rec := do(h, "GET", path, "10.66.0.99:5000", nil, nil)
-		if rec.Code != http.StatusFound || rec.Header().Get("Location") != want {
-			t.Errorf("%s: code=%d location=%q, want 302 %q", path, rec.Code, rec.Header().Get("Location"), want)
+		if rec.Code != http.StatusNotFound {
+			t.Errorf("%s: code=%d, want 404", path, rec.Code)
 		}
-	}
-	if rec := do(h, "GET", "/nope", "10.66.0.99:5000", nil, nil); rec.Code != http.StatusNotFound {
-		t.Errorf("unrelated path should stay 404, got %d", rec.Code)
 	}
 }
 

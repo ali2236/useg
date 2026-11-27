@@ -193,23 +193,8 @@ func hostLabel(host string) string {
 	return strings.Join(strings.Fields(h), " ")
 }
 
-// The connectivity checks the common OSes fire on join. A 302 to the portal is
-// what makes them show the "sign in to network" sheet instead of "online".
-var captiveProbe = map[string]bool{
-	"/hotspot-detect.html": true, // Apple
-	"/generate_204":        true, // Android
-	"/gen_204":             true, // Android, older
-	"/connecttest.txt":     true, // Windows 10+
-	"/ncsi.txt":            true, // Windows, older
-	"/success.txt":         true, // Firefox
-}
-
 func (s *Server) portal(w http.ResponseWriter, r *http.Request) {
 	if r.URL.Path != "/" {
-		if captiveProbe[r.URL.Path] {
-			http.Redirect(w, r, "http://"+s.cfg.BoxIP+"/", http.StatusFound)
-			return
-		}
 		http.NotFound(w, r)
 		return
 	}
