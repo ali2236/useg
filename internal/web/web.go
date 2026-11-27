@@ -347,7 +347,7 @@ func (s *Server) dailyHistory(in quota.Input, personID, today int64, lang string
 	}
 	out := make([]dailyRow, 0, len(days))
 	for i, d := range days {
-		label := jalali.Format(d, "month-day", s.loc)
+		label := jalali.Format(d, "short", s.loc)
 		if lang == "fa" {
 			label = persianDigits(label)
 		}
