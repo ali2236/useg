@@ -368,11 +368,6 @@ func (s *Server) sub(w http.ResponseWriter, r *http.Request) {
 		lines = append(lines, fmt.Sprintf("%s?%s#%s", noConnect, q.Encode(), url.PathEscape(title)))
 	}
 
-	if r.URL.Query().Get("raw") != "" {
-		w.Header().Set("Content-Type", "text/plain; charset=utf-8")
-		fmt.Fprintln(w, strings.Join(lines, "\n"))
-		return
-	}
 	total := st.Cap
 	if total < 0 {
 		total = 0 // clients read 0 as unlimited
@@ -385,7 +380,13 @@ func (s *Server) sub(w http.ResponseWriter, r *http.Request) {
 	if body != "" {
 		body += "\n"
 	}
-	fmt.Fprint(w, base64.StdEncoding.EncodeToString([]byte(body)))
+	// Happ and the other common clients take the open URI list; the base64
+	// wrapper is the x-ui convention and is opt-in.
+	if r.URL.Query().Get("b64") != "" {
+		fmt.Fprint(w, base64.StdEncoding.EncodeToString([]byte(body)))
+		return
+	}
+	fmt.Fprint(w, body)
 }
 
 // ---- sessions ---------------------------------------------------------------

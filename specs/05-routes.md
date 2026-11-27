@@ -16,7 +16,8 @@ Route kinds:
 ## 5.1 Subscription format
 
 `GET http://192.168.100.2/sub/<token>` (alias `http://portal.gate/sub/<token>`)
-returns base64 of newline-separated URIs, one per enabled route:
+returns newline-separated URIs, one per enabled route (`?b64=1` wraps the same
+text in base64 for clients that want the x-ui convention):
 
 ```
 vless://b1f0c2e4-…@192.168.100.2:10443?type=tcp&security=none#primary

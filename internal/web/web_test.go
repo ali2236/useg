@@ -174,11 +174,8 @@ func TestSubListsRoutesQuotaAndDeviceUsage(t *testing.T) {
 		}
 	}
 
-	raw, err := base64.StdEncoding.DecodeString(rec.Body.String())
-	if err != nil {
-		t.Fatalf("subscription is not base64: %v", err)
-	}
-	lines := strings.Split(strings.TrimSpace(string(raw)), "\n")
+	raw := rec.Body.String()
+	lines := strings.Split(strings.TrimSpace(raw), "\n")
 	if len(lines) != 3 {
 		t.Fatalf("want route + quota + device rows, got %d:\n%s", len(lines), raw)
 	}
@@ -202,11 +199,8 @@ func TestSubWithoutDevicesIsNotEmpty(t *testing.T) {
 	srv, _, cfg, person := tserver(t)
 
 	rec := do(srv.PortalHandler(), "GET", "/sub/"+person.SubToken, "10.66.0.99:5000", nil, nil)
-	raw, err := base64.StdEncoding.DecodeString(rec.Body.String())
-	if err != nil {
-		t.Fatalf("subscription is not base64: %v", err)
-	}
-	lines := strings.Split(strings.TrimSpace(string(raw)), "\n")
+	raw := rec.Body.String()
+	lines := strings.Split(strings.TrimSpace(raw), "\n")
 	if len(lines) != 2 {
 		t.Fatalf("want route + quota rows without a device, got %d:\n%s", len(lines), raw)
 	}
@@ -216,6 +210,22 @@ func TestSubWithoutDevicesIsNotEmpty(t *testing.T) {
 	}
 	if !strings.Contains(fragment(lines[1]), "باقی‌مانده") {
 		t.Errorf("quota row missing: %s", lines[1])
+	}
+}
+
+func TestSubBase64IsOptIn(t *testing.T) {
+	srv, _, _, person := tserver(t)
+
+	rec := do(srv.PortalHandler(), "GET", "/sub/"+person.SubToken+"?b64=1", "10.66.0.3:5000", nil, nil)
+	raw, err := base64.StdEncoding.DecodeString(rec.Body.String())
+	if err != nil {
+		t.Fatalf("opt-in subscription is not base64: %v", err)
+	}
+	if !strings.Contains(string(raw), "#primary") {
+		t.Errorf("decoded opt-in subscription misses the route row:\n%s", raw)
+	}
+	if rec.Header().Get("Subscription-Userinfo") == "" {
+		t.Error("opt-in subscription lost the quota header")
 	}
 }
 

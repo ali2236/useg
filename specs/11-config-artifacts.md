@@ -91,7 +91,7 @@ ip route add local 0.0.0.0/0 dev lo table 100
 
 | Path | Port | Purpose |
 |---|---|---|
-| `GET /sub/<token>` | 80 | base64 subscription for one person |
+| `GET /sub/<token>` | 80 | subscription (plain URIs; `?b64=1` for base64) |
 | `GET /` | 80 | portal: device status, remaining bytes, subscription link |
 | `GET /admin/...` | 8080 | persons, devices, routes (with rates), classes, periods, usage |
 | `GET /admin/api/...` | 8080 | same, JSON, used by the UI |
