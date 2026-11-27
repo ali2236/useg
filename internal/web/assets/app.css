@@ -360,6 +360,8 @@ code {
 
 @media (max-width: 640px) {
   .grid-2, .grid-3, .grid-4 { grid-template-columns: 1fr; }
+  .person-device { padding-inline-start: 32px; }
+  .dev-bar .progress { max-width: 35%; }
 }
 
 /* ---- portal (the page a household device lands on) ---------------------- */
@@ -451,8 +453,18 @@ code {
 .dev-dot.is-on { background: var(--success); }
 .dev-dot.is-off { background: var(--danger); }
 .dev-sub { flex-basis: 100%; }
-.dev-bar { flex-basis: 100%; }
-.dev-bar .progress { margin-top: 0; }
+.dev-bar { display: flex; align-items: center; gap: 8px; flex-basis: 100%; }
+.dev-bar .progress { flex: 0 1 160px; min-width: 70px; max-width: 45%; margin-top: 0; }
+
+/* A person owns a sub-list of devices; the rows share the list's separators. */
+.person + .person { border-top: 1px solid var(--border); }
+.person-devices { border-top: 1px solid var(--border); padding: 4px 16px 8px; }
+.person-device {
+  display: flex; align-items: center; gap: 8px;
+  padding-block: 4px; padding-inline-start: 48px;
+  font-size: .75rem;
+}
+.person-device-name { flex: 1; min-width: 0; overflow-wrap: anywhere; }
 
 .dev-tools { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
 .dev-search { width: 240px; max-width: 100%; }
@@ -501,11 +513,6 @@ code {
 .menu-actions {
   display: flex; flex-wrap: wrap; gap: 8px;
   margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--border);
-}
-.menu-device {
-  display: flex; align-items: center; justify-content: space-between; gap: 8px;
-  margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--border);
-  overflow-wrap: anywhere;
 }
 
 .empty-state {

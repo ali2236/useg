@@ -466,7 +466,7 @@ func TestAdminNeedsSession(t *testing.T) {
 	}
 	rec = do(h, "GET", "/admin", "10.66.0.3:5000", nil, cookie)
 	body := rec.Body.String()
-	if rec.Code != 200 || !strings.Contains(body, `<html lang="fa" dir="rtl">`) || !strings.Contains(body, "<h2>افراد</h2>") || !strings.Contains(body, `href="/assets/app.css?v=3"`) {
+	if rec.Code != 200 || !strings.Contains(body, `<html lang="fa" dir="rtl">`) || !strings.Contains(body, "<h2>افراد</h2>") || !strings.Contains(body, `href="/assets/app.css?v=4"`) {
 		t.Fatalf("dashboard: %d", rec.Code)
 	}
 	for _, want := range []string{
@@ -857,7 +857,7 @@ func TestAdminLangSwitchAndFont(t *testing.T) {
 
 	rec := do(h, "GET", "/admin?lang=en", "10.66.0.3:5000", nil, cookie)
 	body := rec.Body.String()
-	if !strings.Contains(body, `<html lang="en" dir="ltr">`) || !strings.Contains(body, "<h2>People</h2>") || !strings.Contains(body, `href="/assets/app.css?v=3"`) {
+	if !strings.Contains(body, `<html lang="en" dir="ltr">`) || !strings.Contains(body, "<h2>People</h2>") || !strings.Contains(body, `href="/assets/app.css?v=4"`) {
 		t.Errorf("english admin missing:\n%s", body)
 	}
 	for _, want := range []string{`id="audit"`, `id="machine"`, `data-tab="dashboard"`, `data-tab="data"`, `class="panel is-active"`, "</html>", "class rates", "Days left", "Start a new cycle", "Usage by person"} {
@@ -1034,6 +1034,9 @@ func TestDeviceOwnerSelectedAndPersonSubtree(t *testing.T) {
 	people := body[start : start+end]
 	if !strings.Contains(people, mac) || !strings.Contains(people, `value="unbind"`) {
 		t.Errorf("device %s missing from the person subtree:\n%s", mac, people)
+	}
+	if !strings.Contains(people, `class="person-device"`) || !strings.Contains(people, `dev-bar-num`) {
+		t.Errorf("person rows should show devices and used/of labels:\n%s", people)
 	}
 	if strings.Contains(people, "/sub/") {
 		t.Errorf("admin people tab should not show subscription links:\n%s", people)

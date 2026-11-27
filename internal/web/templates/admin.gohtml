@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>useg admin</title>
-<link rel="stylesheet" href="/assets/app.css?v=3">
+<link rel="stylesheet" href="/assets/app.css?v=4">
 </head>
 <body>
 {{$l := .Lang}}
@@ -437,6 +437,7 @@
   {{if .Persons}}
   <div class="dev-list dev-list--admin">
     {{range .Persons}}
+    <div class="person">
     <div class="dev{{if .Status.Blocked}} is-blocked{{end}}">
       <span class="dev-icon" aria-hidden="true">
         <svg class="icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8" r="4"/><path d="M4 21a8 8 0 0 1 16 0"/></svg>
@@ -462,7 +463,6 @@
         </span>
         {{if .Status.Blocked}}<span class="badge badge-danger">{{reason $l .Status.Reason}}</span>{{end}}
         {{if lt .Status.Cap 0}}<span class="badge badge-neutral">{{T $l "household.unmetered"}}</span>{{end}}
-        <span class="dev-sub muted small">{{digits .Devices $l}} {{T $l "devices.count"}}</span>
         <div class="dev-bar">
           {{if lt .Status.Cap 0}}
           <div class="progress" title="{{T $l "th.cap"}} ∞ · {{T $l "th.used"}} {{bytes .Used $l}}">
@@ -473,10 +473,9 @@
             <div class="progress-fill{{if .Status.Blocked}} is-danger{{end}}" style="width: {{pct .Used .Status.Cap}}%"></div>
           </div>
           {{end}}
+          <span class="small muted num dev-bar-num">{{bytes .Used $l}} {{T $l "household.of"}} {{if lt .Status.Cap 0}}∞{{else}}{{bytes .Status.Cap $l}}{{end}}</span>
         </div>
       </div>
-
-      <span class="dev-used num">{{bytes .Used $l}}</span>
 
       <details class="menu">
         <summary class="btn btn-sm btn-secondary btn-icon" aria-expanded="false" aria-label="{{T $l "persons.manage"}}" title="{{T $l "persons.manage"}}">
@@ -495,23 +494,30 @@
             </label>
             <button class="btn btn-sm btn-secondary">{{T $l "persons.save"}}</button>
           </form>
-          {{range .DeviceRows}}
-          <div class="menu-device">
-            <span class="small">{{deviceName .D}}</span>
-            <form method="post" action="/admin/device">
-              <input type="hidden" name="mac" value="{{.D.MAC}}">
-              <button class="btn btn-sm btn-secondary btn-icon" name="action" value="unbind" aria-label="{{T $l "devices.unbind"}} {{deviceName .D}}" title="{{T $l "devices.unbind"}}">
-                <svg class="icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 15 15 9"/><path d="M11 6.5 12.5 5a4.24 4.24 0 0 1 6 6L17 12.5M7 11.5 5.5 13a4.24 4.24 0 0 0 6 6L13 17.5"/></svg>
-              </button>
-            </form>
-          </div>
-          {{end}}
           <form method="post" action="/admin/person/delete" class="menu-actions" onsubmit="return confirm('{{T $l "persons.delete_confirm"}}')">
             <input type="hidden" name="person" value="{{.P.ID}}">
             <button class="btn btn-sm btn-danger">{{T $l "persons.delete"}}</button>
           </form>
         </div>
       </details>
+    </div>
+    {{if .DeviceRows}}
+    <div class="person-devices">
+      {{range .DeviceRows}}
+      <div class="person-device">
+        <svg class="icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4" width="18" height="12" rx="2"/><path d="M8 20h8M12 16v4"/></svg>
+        <span class="person-device-name">{{deviceName .D}}</span>
+        <span class="num muted">{{bytes .Used $l}}</span>
+        <form method="post" action="/admin/device">
+          <input type="hidden" name="mac" value="{{.D.MAC}}">
+          <button class="icon-btn" name="action" value="unbind" aria-label="{{T $l "devices.unbind"}} {{deviceName .D}}" title="{{T $l "devices.unbind"}}">
+            <svg class="icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 15 15 9"/><path d="M11 6.5 12.5 5a4.24 4.24 0 0 1 6 6L17 12.5M7 11.5 5.5 13a4.24 4.24 0 0 0 6 6L13 17.5"/></svg>
+          </button>
+        </form>
+      </div>
+      {{end}}
+    </div>
+    {{end}}
     </div>
     {{end}}
   </div>
