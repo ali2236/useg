@@ -185,10 +185,17 @@ func TestPortalIdentifiedPersonSeesTheirDevices(t *testing.T) {
 	if !strings.Contains(body, "سلام، "+person.Name) {
 		t.Errorf("portal should greet the identified person:\n%s", body)
 	}
-	for _, want := range []string{"phone", "tablet", "۱٫۵ GB", "افراد", "sara", "۲٫۵ GB", "شما"} {
+	for _, want := range []string{"phone", "tablet", "۱٫۵ GB", "افراد", "sara", "شما"} {
 		if !strings.Contains(body, want) {
 			t.Errorf("portal misses %q:\n%s", want, body)
 		}
+	}
+	// People rows are for transferring, not for showing anyone's usage.
+	if people := body[strings.Index(body, "افراد"):]; strings.Contains(people, "۲٫۵ GB") {
+		t.Error("people section must not show usage")
+	}
+	if people := body[strings.Index(body, "افراد"):]; !strings.Contains(people, "/transfer?to=") {
+		t.Error("people section should put the transfer control in the row's end slot")
 	}
 	if strings.Index(body, "tablet") > strings.Index(body, "phone") {
 		t.Error("devices should be sorted by usage, biggest first")

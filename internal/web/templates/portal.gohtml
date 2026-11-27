@@ -56,26 +56,6 @@
     {{end}}
   </section>
 
-  {{if .PersonName}}
-  <section class="portal-section">
-    <h2 class="portal-h2">{{T .Lang "portal.daily_title"}}</h2>
-    <p class="quota-sub">{{T .Lang "portal.today"}}: {{bytes .DailyUsed .Lang}}{{if .HasDaily}} / {{bytes .DailyCap .Lang}}{{else}} · {{T .Lang "portal.daily_no_limit"}}{{end}}</p>
-    <ul class="dev-list">
-      {{range .DailyHistory}}
-      <li class="dev">
-        <span class="dev-name">{{.Label}}{{if .Today}} <span class="badge badge-info">{{T $.Lang "portal.today"}}</span>{{end}}</span>
-        <span class="dev-used num">{{bytes .Bytes $.Lang}}</span>
-      </li>
-      {{end}}
-    </ul>
-    <form method="post" action="/daily-limit" class="row">
-      <input class="input input-sm" type="number" inputmode="decimal" step="any" min="0" name="gb" value="{{.DailyLimitGB}}" placeholder="{{T .Lang "portal.daily_no_limit"}}">
-      <button class="btn btn-sm btn-primary">{{T .Lang "portal.daily_save"}}</button>
-    </form>
-    <p class="small muted">{{T .Lang "portal.daily_hint"}}</p>
-  </section>
-  {{end}}
-
   <section class="portal-section">
     <h2 class="portal-h2">{{T .Lang "portal.devices"}}</h2>
     <ul class="dev-list">
@@ -94,17 +74,40 @@
       {{end}}
     </ul>
   </section>
+  {{if .PersonName}}
+  <section class="portal-section">
+    <div class="portal-head-row">
+      <h2 class="portal-h2">{{T .Lang "portal.daily_title"}}</h2>
+      <button class="btn btn-sm btn-secondary" type="button" popovertarget="daily-limit-pop">{{T .Lang "portal.daily_set"}}</button>
+    </div>
+    <p class="quota-sub">{{T .Lang "portal.today"}}: {{bytes .DailyUsed .Lang}}{{if .HasDaily}} / {{bytes .DailyCap .Lang}}{{else}} · {{T .Lang "portal.daily_no_limit"}}{{end}}</p>
+    {{if .DailyHistory}}
+    <ul class="dev-list">
+      {{range .DailyHistory}}
+      <li class="dev">
+        <span class="dev-main"><span class="dev-name">{{.Label}}{{if .Today}}<span class="badge badge-info">{{T $.Lang "portal.today"}}</span>{{end}}</span></span>
+        <span class="dev-used num">{{bytes .Bytes $.Lang}}</span>
+      </li>
+      {{end}}
+    </ul>
+    {{end}}
+    <div id="daily-limit-pop" popover class="portal-pop">
+      <form method="post" action="/daily-limit" class="stack">
+        <label class="field">
+          <span class="field-label">{{T .Lang "portal.daily_limit_label"}}</span>
+          <input class="input" type="number" inputmode="decimal" step="any" min="0" name="gb" value="{{.DailyLimitGB}}" placeholder="{{T .Lang "portal.daily_no_limit"}}">
+        </label>
+        <button class="btn btn-sm btn-primary">{{T .Lang "portal.daily_save"}}</button>
+      </form>
+    </div>
+  </section>
+  {{end}}
   {{if .People}}
   <details class="portal-section">
     <summary class="portal-h2">{{T .Lang "nav.persons"}}</summary>
     <ul class="dev-list">
       {{range .People}}
       <li class="dev">
-        {{if and $.Transferable (not .You)}}
-        <a class="btn btn-sm btn-secondary btn-icon" href="/transfer?to={{.ID}}" aria-label="{{T $.Lang "portal.transfer"}} {{.Name}}" title="{{T $.Lang "portal.transfer"}} {{.Name}}">
-          <svg viewBox="0 0 16 16" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 5.5h8.5M9.5 3.5l2 2-2 2M13 10.5H4.5M6.5 8.5l-2 2 2 2"/></svg>
-        </a>
-        {{end}}
         <span class="dev-icon" aria-hidden="true">
           <svg viewBox="0 0 16 16" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.2"><circle cx="8" cy="5.5" r="2.6"/><path d="M3.2 13.5a4.8 4.8 0 0 1 9.6 0" stroke-linecap="round"/></svg>
         </span>
@@ -112,7 +115,11 @@
           <span class="dev-name">{{.Name}}</span>
           {{if .You}}<span class="badge badge-info">{{T $.Lang "portal.you"}}</span>{{end}}
         </div>
-        <span class="dev-used num">{{bytes .Used $.Lang}}</span>
+        {{if and $.Transferable (not .You)}}
+        <a class="btn btn-sm btn-secondary btn-icon" href="/transfer?to={{.ID}}" aria-label="{{T $.Lang "portal.transfer"}} {{.Name}}" title="{{T $.Lang "portal.transfer"}} {{.Name}}">
+          <svg viewBox="0 0 16 16" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 5.5h8.5M9.5 3.5l2 2-2 2M13 10.5H4.5M6.5 8.5l-2 2 2 2"/></svg>
+        </a>
+        {{end}}
       </li>
       {{end}}
     </ul>

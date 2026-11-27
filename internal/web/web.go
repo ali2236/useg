@@ -355,6 +355,9 @@ func (s *Server) dailyHistory(in quota.Input, personID, today int64, lang string
 		if i == len(days)-1 {
 			used = today
 		}
+		if used == 0 {
+			continue
+		}
 		out = append(out, dailyRow{Label: label, Bytes: used, Today: i == len(days)-1})
 	}
 	return out

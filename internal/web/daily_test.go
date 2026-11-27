@@ -49,10 +49,16 @@ func TestPortalDailyHistoryAndLimit(t *testing.T) {
 	}
 
 	body := do(h, "GET", "/?ok=daily", "10.66.0.3:5000", nil, nil).Body.String()
-	for _, want := range []string{"سقف روزانه ذخیره شد", "سقف مصرف روزانه", "۱٫۲ GB", "۵۰۰ MB"} {
+	for _, want := range []string{"سقف روزانه ذخیره شد", "سقف مصرف روزانه", "۱٫۲ GB", "۵۰۰ MB", `popovertarget="daily-limit-pop"`} {
 		if !strings.Contains(body, want) {
 			t.Errorf("portal misses %q:\n%s", want, body)
 		}
+	}
+	if daily := body[strings.Index(body, `popovertarget="daily-limit-pop"`):strings.Index(body, `id="daily-limit-pop"`)]; strings.Count(daily, `<li class="dev">`) != 2 {
+		t.Errorf("daily list should hold only the two days with usage:\n%s", daily)
+	}
+	if strings.Index(body, `popovertarget="daily-limit-pop"`) < strings.Index(body, "دستگاه‌ها") {
+		t.Error("the daily section should come after the devices section")
 	}
 
 	// Raising the cap clears the block at the next render.
