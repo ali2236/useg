@@ -36,7 +36,9 @@ var assetFS embed.FS
 func assetHandler() http.Handler {
 	h := http.FileServerFS(assetFS)
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Cache-Control", "public, max-age=31536000, immutable")
+		// Assets ship inside the binary and are served from the same machine;
+		// never let the browser pin a stale copy across a deploy.
+		w.Header().Set("Cache-Control", "no-store")
 		h.ServeHTTP(w, r)
 	})
 }
@@ -157,8 +159,23 @@ func hostLabel(host string) string {
 	return strings.Join(strings.Fields(h), " ")
 }
 
+// The connectivity checks the common OSes fire on join. A 302 to the portal is
+// what makes them show the "sign in to network" sheet instead of "online".
+var captiveProbe = map[string]bool{
+	"/hotspot-detect.html": true, // Apple
+	"/generate_204":        true, // Android
+	"/gen_204":             true, // Android, older
+	"/connecttest.txt":     true, // Windows 10+
+	"/ncsi.txt":            true, // Windows, older
+	"/success.txt":         true, // Firefox
+}
+
 func (s *Server) portal(w http.ResponseWriter, r *http.Request) {
 	if r.URL.Path != "/" {
+		if captiveProbe[r.URL.Path] {
+			http.Redirect(w, r, "http://"+s.cfg.BoxIP+"/", http.StatusFound)
+			return
+		}
 		http.NotFound(w, r)
 		return
 	}

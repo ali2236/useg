@@ -207,7 +207,7 @@ sed \
   -e "s/^dhcp-range=.*/dhcp-range=$BASE.50,$BASE.240,12h/" \
   -e "s/^dhcp-option=3,.*/dhcp-option=3,$BOX/" \
   -e "s/^dhcp-option=6,.*/dhcp-option=6,$BOX/" \
-  -e "s|^address=/portal.gate/.*|address=/portal.gate/$BOX|" \
+  -e "s|^\(address=/[^/]*/\).*|\1$BOX|" \
   deploy/dnsmasq-useg.conf > /etc/dnsmasq.d/useg.conf
 
 # Fail here with dnsmasq's own message, not after a failed restart. Run it the

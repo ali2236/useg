@@ -94,6 +94,23 @@ func do(srv http.Handler, method, target, remote string, form url.Values, cookie
 	return rec
 }
 
+// An OS connectivity probe must land on the portal, not on a 404, or the device
+// stays silent instead of showing its sign-in sheet.
+func TestCaptiveProbeRedirectsToPortal(t *testing.T) {
+	srv, _, cfg, _ := tserver(t)
+	h := srv.PortalHandler()
+	want := "http://" + cfg.BoxIP + "/"
+	for _, path := range []string{"/hotspot-detect.html", "/generate_204", "/connecttest.txt", "/success.txt"} {
+		rec := do(h, "GET", path, "10.66.0.99:5000", nil, nil)
+		if rec.Code != http.StatusFound || rec.Header().Get("Location") != want {
+			t.Errorf("%s: code=%d location=%q, want 302 %q", path, rec.Code, rec.Header().Get("Location"), want)
+		}
+	}
+	if rec := do(h, "GET", "/nope", "10.66.0.99:5000", nil, nil); rec.Code != http.StatusNotFound {
+		t.Errorf("unrelated path should stay 404, got %d", rec.Code)
+	}
+}
+
 func TestPortalShowsDeviceAndGuestState(t *testing.T) {
 	srv, _, _, _ := tserver(t)
 	h := srv.PortalHandler()
@@ -197,7 +214,7 @@ func TestAdminNeedsSession(t *testing.T) {
 	}
 	rec = do(h, "GET", "/admin", "10.66.0.3:5000", nil, cookie)
 	body := rec.Body.String()
-	if rec.Code != 200 || !strings.Contains(body, `<html lang="fa" dir="rtl">`) || !strings.Contains(body, "<h2>افراد</h2>") || !strings.Contains(body, `href="/assets/app.css"`) {
+	if rec.Code != 200 || !strings.Contains(body, `<html lang="fa" dir="rtl">`) || !strings.Contains(body, "<h2>افراد</h2>") || !strings.Contains(body, `href="/assets/app.css?v=2"`) {
 		t.Fatalf("dashboard: %d", rec.Code)
 	}
 	for _, want := range []string{
@@ -513,7 +530,7 @@ func TestAdminLangSwitchAndFont(t *testing.T) {
 
 	rec := do(h, "GET", "/admin?lang=en", "10.66.0.3:5000", nil, cookie)
 	body := rec.Body.String()
-	if !strings.Contains(body, `<html lang="en" dir="ltr">`) || !strings.Contains(body, "<h2>People</h2>") || !strings.Contains(body, `href="/assets/app.css"`) {
+	if !strings.Contains(body, `<html lang="en" dir="ltr">`) || !strings.Contains(body, "<h2>People</h2>") || !strings.Contains(body, `href="/assets/app.css?v=2"`) {
 		t.Errorf("english admin missing:\n%s", body)
 	}
 	for _, want := range []string{`id="audit"`, `id="machine"`, `data-tab="dashboard"`, `data-tab="data"`, `class="panel is-active"`, "</html>", "class rates", "Days left", "Start a new cycle", "Usage by person"} {
@@ -541,6 +558,9 @@ func TestAdminLangSwitchAndFont(t *testing.T) {
 		got := do(h, "GET", "/assets/"+asset, "10.66.0.3:5000", nil, nil)
 		if got.Code != 200 || got.Body.Len() == 0 {
 			t.Fatalf("%s not served: %d", asset, got.Code)
+		}
+		if cc := got.Header().Get("Cache-Control"); cc != "no-store" {
+			t.Errorf("%s Cache-Control = %q", asset, cc)
 		}
 	}
 }

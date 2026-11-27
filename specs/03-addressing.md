@@ -9,6 +9,12 @@ dhcp-option=3,192.168.100.2            # gateway = box
 dhcp-option=6,192.168.100.2            # DNS = box
 dhcp-leasefile=/var/lib/misc/dnsmasq.leases
 address=/portal.gate/192.168.100.2     # friendly portal name
+address=/wifi.net/192.168.100.2        # the same page under a second name
+address=/captive.apple.com/192.168.100.2          # OS connectivity probes:
+address=/connectivitycheck.gstatic.com/192.168.100.2   # resolving these to the
+address=/www.msftconnecttest.com/192.168.100.2         # box makes a joining
+address=/www.msftncsi.com/192.168.100.2                # device open its portal
+address=/detectportal.firefox.com/192.168.100.2        # sheet
 no-resolv                            # ignore the host's /etc/resolv.conf
 strict-order                         # try the servers below in this order
 cache-size=10000
@@ -24,6 +30,15 @@ server=149.112.112.112               # Quad9
 domain-needed
 bogus-priv
 ```
+
+The probe names are hijacked so a device that has just joined the Wi-Fi cannot
+declare the LAN "online" before it has seen the portal: the portal answers the
+known probe paths (`/hotspot-detect.html`, `/generate_204`, `/connecttest.txt`,
+`/success.txt`) with a 302 to `http://<box_ip>/`, which is what makes the OS
+open its sign-in sheet. This is a plain-HTTP trigger, not interception: a phone
+with Private DNS or a hard-coded resolver never asks dnsmasq, and HTTPS traffic
+is never touched. Which of these lines exist is the on/off switch; there is no
+config flag.
 
 `no-resolv` and `strict-order` are deliberate. The host's `/etc/resolv.conf`
 may list a public resolver such as `8.8.8.8`, which is commonly blocked or
