@@ -497,7 +497,7 @@
             <button class="icon-btn" type="button" data-rename aria-label="{{T $l "devices.edit_name"}}" title="{{T $l "devices.edit_name"}}">
               <svg class="icon" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>
             </button>
-            <form method="post" action="/admin/device" class="rename-form" hidden>
+            <form method="post" action="/admin/device" class="rename-form">
               <input type="hidden" name="mac" value="{{.D.MAC}}">
               <input type="hidden" name="action" value="label">
               <input class="input input-sm rename-input" name="label" value="{{.D.Label}}" placeholder="{{deviceName .D}}" aria-label="{{T $l "devices.label_ph"}}" required>
@@ -511,9 +511,9 @@
           </span>
           <span class="badge badge-neutral">{{if .OwnerName}}{{.OwnerName}}{{else}}{{T $l "devices.guest"}}{{end}}</span>
           {{if .BlockReason}}<span class="badge badge-danger">{{reason $l .BlockReason}}</span>{{end}}
-          <span class="dev-sub muted small">
-            {{if .D.IP}}<span class="ltr num">{{.D.IP}}</span> · {{end}}<span class="ltr num">{{.D.MAC}}</span>{{if .D.BindSource}} · {{.D.BindSource}}{{end}}{{if .LastUsed}} · {{T $l "devices.last_used"}} <span class="num">{{.LastUsed}}</span>{{end}}
-          </span>
+          {{if or .D.IP .LastUsed}}<span class="dev-sub muted small">
+            {{if .D.IP}}<span class="ltr num">{{.D.IP}}</span>{{end}}{{if and .D.IP .LastUsed}} · {{end}}{{if .LastUsed}}{{T $l "devices.last_used"}} <span class="num">{{.LastUsed}}</span>{{end}}
+          </span>{{end}}
         </div>
 
         <span class="dev-used num">{{bytes .Used $l}}</span>
@@ -523,6 +523,10 @@
             <svg class="icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 7h8M18 7h2M4 17h4M12 17h8M4 12h10"/><circle cx="14" cy="7" r="2"/><circle cx="10" cy="12" r="2"/><circle cx="10" cy="17" r="2"/></svg>
           </summary>
           <div class="menu-panel">
+            <div class="menu-meta">
+              <span class="muted">{{T $l "devices.mac"}}</span>
+              <span class="ltr num">{{.D.MAC}}{{if .D.BindSource}} · {{.D.BindSource}}{{end}}</span>
+            </div>
             <form method="post" action="/admin/device" class="menu-form">
               <input type="hidden" name="mac" value="{{.D.MAC}}">
               <input type="hidden" name="action" value="bind">

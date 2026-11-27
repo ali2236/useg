@@ -463,8 +463,8 @@ code {
   padding: 4px; border-radius: var(--radius-inner); cursor: pointer;
 }
 .icon-btn:hover { background: var(--bg-muted); color: var(--text); }
-.rename-form { display: flex; align-items: center; gap: 6px; }
-.rename-form[hidden] { display: none; }
+.rename-form { display: none; align-items: center; gap: 6px; }
+.dev-name-wrap.is-editing .rename-form { display: flex; }
 .rename-input { width: 190px; max-width: 100%; }
 
 .menu { flex: none; }
@@ -478,6 +478,12 @@ code {
   box-shadow: var(--shadow-low); text-align: start;
 }
 .menu[open] > .menu-panel { display: block; }
+.menu-meta {
+  display: flex; justify-content: space-between; gap: 8px;
+  margin-bottom: 10px; padding-bottom: 10px;
+  border-bottom: 1px solid var(--border);
+  font-size: .75rem; overflow-wrap: anywhere;
+}
 .menu-form { display: flex; flex-direction: column; gap: 6px; }
 .menu-actions {
   display: flex; flex-wrap: wrap; gap: 8px;

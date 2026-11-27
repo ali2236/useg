@@ -959,6 +959,11 @@ func TestDevicesTabSortsByLastUse(t *testing.T) {
 	if !strings.Contains(body, "last used") {
 		t.Error("devices tab needs a last-used column")
 	}
+	// The pencil only toggles .is-editing, so the form must not start with the
+	// hidden attribute or it can never be revealed.
+	if !strings.Contains(body, `class="rename-form"`) || strings.Contains(body, `class="rename-form" hidden`) {
+		t.Error("rename form must be hidden by CSS, not the hidden attribute")
+	}
 	used := strings.Index(body, "dd:ee:ff:00:00:01")
 	never := strings.Index(body, "dd:ee:ff:00:00:02")
 	if used < 0 || never < 0 || used > never {

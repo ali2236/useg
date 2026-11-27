@@ -242,6 +242,7 @@ var messages = map[string][2]string{
 	"devices.manage":     {"مدیریت دستگاه", "manage device"},
 	"devices.owner_hint": {"تغییر مالک بلافاصله ذخیره می‌شود؛ «مهمان» یعنی بدون مالک.", "Changing the owner saves right away; “guest” means no owner."},
 	"devices.last_used":  {"آخرین استفاده", "last used"},
+	"devices.mac":        {"مک‌آدرس", "MAC"},
 	"devices.cancel":     {"انصراف", "cancel"},
 	"devices.search_ph":  {"جستجوی نام، مالک یا IP", "search name, owner or IP"},
 	"devices.filter":     {"فیلتر دستگاه‌ها", "filter devices"},
