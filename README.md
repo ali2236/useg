@@ -16,6 +16,8 @@ Three processes on one host: `dnsmasq` (DHCP/DNS), `sing-box` (data plane, pinne
 1.14.4, supervised by the agent), and one Go binary `useg` (database, accounting,
 quota loop, portal, subscription endpoint, admin UI).
 
+![Admin — People](docs/admin-people.png)
+
 ## What it does
 
 - **Meters the LAN without touching devices.** nftables TPROXY on a single NIC
