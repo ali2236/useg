@@ -377,6 +377,61 @@ func (d *DB) ReduceAllocation(periodID, personID, bytes int64) error {
 	return err
 }
 
+// Transfer moves bytes from one person's share to another for one period. In a
+// manual cycle the allocation rows carry the move themselves, so Compute must
+// not apply the transfer row again; weight cycles read it via TransferNet.
+func (d *DB) Transfer(periodID, from, to, bytes int64, manual bool) error {
+	if bytes <= 0 {
+		return fmt.Errorf("data amount must be positive")
+	}
+	if from == to {
+		return fmt.Errorf("cannot transfer to yourself")
+	}
+	return d.tx(func(tx *sql.Tx) error {
+		if manual {
+			res, err := tx.Exec(`UPDATE allocation SET bytes = bytes - ?
+				WHERE period_id = ? AND person_id = ? AND bytes >= ?`,
+				bytes, periodID, from, bytes)
+			if err != nil {
+				return err
+			}
+			if n, _ := res.RowsAffected(); n == 0 {
+				return fmt.Errorf("not enough allocated data")
+			}
+			if _, err := tx.Exec(`INSERT INTO allocation(period_id, person_id, bytes)
+				VALUES(?, ?, ?) ON CONFLICT(period_id, person_id) DO UPDATE SET
+				bytes = allocation.bytes + excluded.bytes`, periodID, to, bytes); err != nil {
+				return err
+			}
+		}
+		_, err := tx.Exec(`INSERT INTO transfer(period_id, from_person_id, to_person_id, bytes, at)
+			VALUES(?, ?, ?, ?, ?)`, periodID, from, to, bytes, time.Now().Unix())
+		return err
+	})
+}
+
+// TransferNet is received minus sent bytes per person for one period.
+func (d *DB) TransferNet(periodID int64) (map[int64]int64, error) {
+	rows, err := d.Query(`SELECT person_id, SUM(net) FROM (
+			SELECT to_person_id AS person_id, bytes AS net FROM transfer WHERE period_id = ?
+			UNION ALL
+			SELECT from_person_id, -bytes FROM transfer WHERE period_id = ?
+		) GROUP BY person_id`, periodID, periodID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := map[int64]int64{}
+	for rows.Next() {
+		var id, net int64
+		if err := rows.Scan(&id, &net); err != nil {
+			return nil, err
+		}
+		out[id] = net
+	}
+	return out, rows.Err()
+}
+
 // ApplyAllocation tops up person shares and the guest share in one transaction.
 func (d *DB) ApplyAllocation(periodID int64, persons map[int64]int64, guest int64) error {
 	return d.tx(func(tx *sql.Tx) error {

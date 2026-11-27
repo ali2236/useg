@@ -404,6 +404,8 @@ code {
 
 .portal-section { margin-top: 24px; }
 .portal-h2 { margin-bottom: 8px; font-size: .8125rem; font-weight: 600; color: var(--text-secondary); }
+.portal-section > summary { cursor: pointer; user-select: none; }
+.portal-section > summary::marker { color: var(--text-secondary); }
 
 .dev-list {
   list-style: none; margin: 0; padding: 0;

@@ -545,6 +545,7 @@ func (s *Server) PortalHandler() http.Handler {
 	mux := http.NewServeMux()
 	mux.Handle("/assets/", assetHandler())
 	mux.HandleFunc("/sub/", s.sub)
+	mux.HandleFunc("/transfer", s.transfer)
 	mux.HandleFunc("/", s.portal)
 	return mux
 }

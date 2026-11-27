@@ -1,0 +1,29 @@
+<!doctype html>
+<html lang="{{.Lang}}" dir="{{.Dir}}">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#0064E0">
+<title>{{T .Lang "transfer.title"}}</title>
+<link rel="icon" href="/assets/icon-192.png" type="image/png">
+<link rel="stylesheet" href="/assets/app.css?v=3">
+</head>
+<body class="page page-center">
+<main class="auth">
+  <h1 class="auth-title">{{T .Lang "transfer.title"}}</h1>
+  {{if .Error}}<div class="alert alert-danger">{{.Error}}</div>{{end}}
+  <form method="post" action="/transfer" class="card stack">
+    <input type="hidden" name="to" value="{{.ToID}}">
+    <p class="m-0"><span class="muted">{{T .Lang "transfer.from"}}</span> <strong>{{.FromName}}</strong></p>
+    <p class="m-0"><span class="muted">{{T .Lang "transfer.to"}}</span> <strong>{{.ToName}}</strong></p>
+    <p class="m-0"><span class="muted">{{T .Lang "transfer.available"}}</span> <strong class="num">{{if .Unlimited}}{{T .Lang "portal.unlimited"}}{{else}}{{bytes .Remaining .Lang}}{{end}}</strong></p>
+    <div class="field">
+      <label class="field-label" for="gb">{{T .Lang "transfer.amount"}}</label>
+      <input class="input" id="gb" type="number" inputmode="decimal" step="any" min="0.001" name="gb" autofocus required>
+    </div>
+    <button class="btn btn-primary btn-block">{{T .Lang "transfer.submit"}}</button>
+  </form>
+  <p class="small" style="margin-top:12px"><a href="/">{{T .Lang "transfer.back"}}</a></p>
+</main>
+</body>
+</html>

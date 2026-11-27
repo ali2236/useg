@@ -37,7 +37,19 @@ this, the multiplier system is a quiet way to overrun the plan. The ceiling
 mirrors the pool: starting a cycle or adding data sets it to the new allowance,
 so there is no separate knob to keep in sync.
 
-## 8.4 Disabling all caps
+## 8.4 Transfers between people
+
+A bound person can give part of their **unused** share to another person from
+the portal. The amount is checked against `cap − used` (including unflushed
+usage) and the sender cannot transfer when unmetered or while caps are off.
+The move is period-scoped and resets with the next period.
+
+In a manual data cycle the transfer moves the two `allocation` rows, so the
+admin's allocation controls and unallocated pool stay consistent. In a
+weight-based period the `transfer` ledger is added to both caps at compute
+time (`received − sent`), leaving the total of all caps unchanged.
+
+## 8.5 Disabling all caps
 
 The admin Household switch (`caps_off=1`) disables every cap — person shares,
 the guest allowance, the guest pool and the household ceiling — while metering,

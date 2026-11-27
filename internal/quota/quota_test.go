@@ -189,6 +189,35 @@ func TestManualAllocationsDriveCaps(t *testing.T) {
 	}
 }
 
+func TestTransfersMoveShareBetweenPeople(t *testing.T) {
+	in := base()
+	in.TransferNet = map[int64]int64{1: -gb, 2: gb}
+	dec := Compute(in)
+	if got := dec.Subjects[PersonSubject(1)].Cap; got != 46_500_000_000 {
+		t.Fatalf("sender cap = %d, want 46.5GB", got)
+	}
+	if got := dec.Subjects[PersonSubject(2)].Cap; got != 48_500_000_000 {
+		t.Fatalf("receiver cap = %d, want 48.5GB", got)
+	}
+
+	// The trimmed share can now block a sender who is still under the old cap.
+	in.Totals["dev:aa:aa:aa:aa:aa:aa"] = store.Totals{Charged: 47 * float64(gb)}
+	dec = Compute(in)
+	if !dec.Subjects[PersonSubject(1)].Blocked {
+		t.Fatal("sender must be blocked after giving its headroom away")
+	}
+}
+
+func TestTransfersIgnoredWhileUnmetered(t *testing.T) {
+	in := base()
+	in.PoolCharged = nil
+	in.TransferNet = map[int64]int64{1: -gb, 2: gb}
+	dec := Compute(in)
+	if got := dec.Subjects[PersonSubject(1)].Cap; got != -1 {
+		t.Fatalf("unmetered sender cap = %d, want -1", got)
+	}
+}
+
 func TestSplit(t *testing.T) {
 	cases := []struct {
 		total   int64

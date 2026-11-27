@@ -41,7 +41,8 @@ type Input struct {
 	GuestDeviceBytes int64
 	RawUsed          int64
 	RawCeiling       *int64
-	Manual           bool // explicit per-person allocations instead of weights
+	Manual           bool            // explicit per-person allocations instead of weights
+	TransferNet      map[int64]int64 // received minus sent, weight periods only
 }
 
 type Decision struct {
@@ -88,9 +89,6 @@ func Compute(in Input) Decision {
 		st := Status{Subject: subj, Used: used, Cap: -1}
 		if in.Manual {
 			st.Cap = in.Allocations[p.ID]
-			if st.Used >= st.Cap {
-				st.Blocked, st.Reason = true, ReasonQuota
-			}
 		} else if in.PoolCharged != nil && totalWeight > 0 {
 			base := float64(*in.PoolCharged - in.GuestPool)
 			if base < 0 {
@@ -101,6 +99,11 @@ func Compute(in Input) Decision {
 			} else {
 				st.Cap = int64(p.Weight / totalWeight * base)
 			}
+		}
+		// A transfer moves share between two people; it never creates data, so
+		// it is ignored while caps are off or the pool is unmetered.
+		if st.Cap >= 0 {
+			st.Cap += in.TransferNet[p.ID]
 			if st.Used >= st.Cap {
 				st.Blocked, st.Reason = true, ReasonQuota
 			}
@@ -229,6 +232,13 @@ func Gather(db *store.DB, period *store.Period) (Input, error) {
 	}
 	if in.Allocations, err = db.Allocations(period.ID); err != nil {
 		return in, err
+	}
+	// A manual cycle already moved the allocation rows; only weight cycles
+	// derive caps from the transfer ledger.
+	if !in.Manual {
+		if in.TransferNet, err = db.TransferNet(period.ID); err != nil {
+			return in, err
+		}
 	}
 	blocks, err := db.Blocks()
 	if err != nil {

@@ -52,10 +52,11 @@ type Server struct {
 	loc  *time.Location
 	tmpl *template.Template
 
-	mu       sync.Mutex
-	sessions map[string]time.Time
-	bypass   bool
-	pending  func() map[string]store.Totals
+	mu         sync.Mutex
+	transferMu sync.Mutex // one transfer at a time: check and move must not race
+	sessions   map[string]time.Time
+	bypass     bool
+	pending    func() map[string]store.Totals
 
 	fetchDomestic func(context.Context) ([]store.DomesticSite, error)
 	refreshing    bool
@@ -117,29 +118,32 @@ type portalDevice struct {
 }
 
 type portalPerson struct {
+	ID   int64
 	Name string
 	Used int64
 	You  bool
 }
 
 type portalPage struct {
-	Lang       string
-	Dir        string
-	Known      bool
-	DeviceName string
-	PersonName string
-	Used       int64
-	Cap        int64
-	Remaining  int64
-	Unlimited  bool
-	Pct        int
-	Over       bool
-	Blocked    bool
-	Reason     string
-	DaysLeft   int
-	Devices    []portalDevice
-	People     []portalPerson
-	PeriodEnd  string
+	Lang         string
+	Dir          string
+	Known        bool
+	DeviceName   string
+	PersonName   string
+	Used         int64
+	Cap          int64
+	Remaining    int64
+	Unlimited    bool
+	Pct          int
+	Over         bool
+	Blocked      bool
+	Reason       string
+	DaysLeft     int
+	Devices      []portalDevice
+	People       []portalPerson
+	PeriodEnd    string
+	Transferable bool
+	Notice       string
 }
 
 func reasonText(l, reason string) string {
@@ -273,6 +277,7 @@ func (s *Server) portal(w http.ResponseWriter, r *http.Request) {
 					continue
 				}
 				page.People = append(page.People, portalPerson{
+					ID:   p.ID,
 					Name: p.Name,
 					Used: st.Used,
 					You:  p.ID == *dev.Owner,
@@ -281,13 +286,134 @@ func (s *Server) portal(w http.ResponseWriter, r *http.Request) {
 			sort.SliceStable(page.People, func(i, j int) bool {
 				return page.People[i].Used > page.People[j].Used
 			})
+			// Only a metered person with something left has data to give away.
+			page.Transferable = page.PersonName != "" && !page.Unlimited && page.Remaining > 0
 		}
+	}
+	if r.URL.Query().Get("ok") == "transfer" {
+		page.Notice = T(l.code, "transfer.ok")
 	}
 	// Whole days left, rounded up: the last partial day still counts as today.
 	if left := period.EndUTC - now.Unix(); left > 0 {
 		page.DaysLeft = int((left + 86399) / 86400)
 	}
 	s.render(w, "portal.gohtml", page)
+}
+
+type transferPage struct {
+	Lang      string
+	Dir       string
+	FromName  string
+	ToName    string
+	ToID      int64
+	Remaining int64
+	Unlimited bool
+	Error     string
+}
+
+func remainingOf(st quota.Status) int64 {
+	if st.Cap < 0 {
+		return 0
+	}
+	if left := st.Cap - st.Used; left > 0 {
+		return left
+	}
+	return 0
+}
+
+// personStatus is the same number the portal and the quota engine see, with the
+// accountant's unflushed buckets folded in.
+func (s *Server) personStatus(period *store.Period, personID int64) (quota.Status, error) {
+	in, err := quota.Gather(s.db, period)
+	if err != nil {
+		return quota.Status{}, err
+	}
+	s.withPending(&in)
+	return quota.Compute(in).Subjects[quota.PersonSubject(personID)], nil
+}
+
+// sameOrigin blocks a form posted by another site. The portal has no session
+// cookie, so the browser's Origin header is the only cross-site signal.
+func sameOrigin(r *http.Request) bool {
+	o := r.Header.Get("Origin")
+	if o == "" {
+		return true
+	}
+	u, err := url.Parse(o)
+	return err == nil && u.Host == r.Host
+}
+
+// transfer moves data from the calling device's person to another person for
+// the current period.
+func (s *Server) transfer(w http.ResponseWriter, r *http.Request) {
+	l := lang{"fa", "rtl"}
+	now := time.Now()
+	period, err := s.db.EnsurePeriod(now, s.loc)
+	if err != nil {
+		http.Error(w, "database error", http.StatusInternalServerError)
+		return
+	}
+	dev, err := s.db.DeviceByIP(clientIP(r))
+	if err != nil || dev.Owner == nil {
+		http.Redirect(w, r, "/", http.StatusSeeOther)
+		return
+	}
+	from, err := s.db.Person(*dev.Owner)
+	if err != nil || !from.Enabled {
+		http.Redirect(w, r, "/", http.StatusSeeOther)
+		return
+	}
+	toID, _ := strconv.ParseInt(r.FormValue("to"), 10, 64)
+	to, err := s.db.Person(toID)
+	if err != nil || !to.Enabled || to.ID == from.ID {
+		http.Error(w, "unknown transfer target", http.StatusBadRequest)
+		return
+	}
+
+	page := transferPage{Lang: l.code, Dir: l.dir, FromName: from.Name, ToName: to.Name, ToID: to.ID}
+
+	if r.Method == http.MethodPost {
+		if !sameOrigin(r) {
+			http.Error(w, "cross-origin transfer", http.StatusForbidden)
+			return
+		}
+		s.transferMu.Lock()
+		defer s.transferMu.Unlock()
+		st, err := s.personStatus(period, from.ID)
+		if err != nil {
+			http.Error(w, "database error", http.StatusInternalServerError)
+			return
+		}
+		page.Remaining = remainingOf(st)
+		amount, ferr := formGB(r, "gb")
+		switch {
+		case ferr != nil || amount == nil || *amount <= 0:
+			page.Error = T(l.code, "transfer.err_amount")
+		case st.Cap < 0 || *amount > page.Remaining:
+			page.Error = T(l.code, "transfer.err_insufficient")
+		default:
+			if err := s.db.Transfer(period.ID, from.ID, to.ID, *amount, period.AllocMode == "manual"); err != nil {
+				s.log.Error("transfer", "from", from.ID, "to", to.ID, "err", err)
+				page.Error = T(l.code, "transfer.err_failed")
+				break
+			}
+			_ = s.db.AddEvent("transfer", quota.PersonSubject(from.ID),
+				fmt.Sprintf("to person:%d %.2f GB", to.ID, float64(*amount)/1e9))
+			http.Redirect(w, r, "/?ok=transfer", http.StatusSeeOther)
+			return
+		}
+		s.render(w, "transfer.gohtml", page)
+		return
+	}
+
+	st, err := s.personStatus(period, from.ID)
+	if err != nil {
+		http.Error(w, "database error", http.StatusInternalServerError)
+		return
+	}
+	page.Remaining = remainingOf(st)
+	page.Unlimited = st.Cap < 0
+	s.render(w, "transfer.gohtml", page)
 }
 
 func (s *Server) subURL(r *http.Request, p store.Person) string {

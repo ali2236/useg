@@ -196,6 +196,9 @@ func TestPortalIdentifiedPersonSeesTheirDevices(t *testing.T) {
 	if people := body[strings.Index(body, "افراد"):]; strings.Index(people, "sara") > strings.Index(people, "ali") {
 		t.Error("people should be sorted by usage, biggest first")
 	}
+	if !strings.Contains(body, "<details") || strings.Contains(body, "<details open") {
+		t.Error("people section should be collapsed by default")
+	}
 	if strings.Contains(body, "/sub/") {
 		t.Error("subscription link should stay hidden on the portal")
 	}
