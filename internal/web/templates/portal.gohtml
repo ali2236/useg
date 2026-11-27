@@ -72,13 +72,31 @@
       {{end}}
     </ul>
   </section>
+  {{if .People}}
+  <section class="portal-section">
+    <h2 class="portal-h2">{{T .Lang "nav.persons"}}</h2>
+    <ul class="dev-list">
+      {{range .People}}
+      <li class="dev">
+        <span class="dev-icon" aria-hidden="true">
+          <svg viewBox="0 0 16 16" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.2"><circle cx="8" cy="5.5" r="2.6"/><path d="M3.2 13.5a4.8 4.8 0 0 1 9.6 0" stroke-linecap="round"/></svg>
+        </span>
+        <div class="dev-main">
+          <span class="dev-name">{{.Name}}</span>
+          {{if .You}}<span class="badge badge-info">{{T $.Lang "portal.you"}}</span>{{end}}
+        </div>
+        <span class="dev-used num">{{bytes .Used $.Lang}}</span>
+      </li>
+      {{end}}
+    </ul>
+  </section>
+  {{end}}
   {{else}}
   <section class="card"><p class="m-0">{{T .Lang "portal.unknown"}}</p></section>
   {{end}}
 
   <footer class="page-foot small">
     <p>{{T .Lang "portal.period_ends"}}: {{.PeriodEnd}}</p>
-    <p>{{T .Lang "portal.privacy"}}</p>
   </footer>
 
 </main>

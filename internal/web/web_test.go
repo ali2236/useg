@@ -132,6 +132,9 @@ func TestPortalShowsDeviceAndGuestState(t *testing.T) {
 	if !strings.Contains(rec.Body.String(), "phone") {
 		t.Error("portal should name the device")
 	}
+	if strings.Contains(rec.Body.String(), "افراد") {
+		t.Error("a guest must not see the household's people section")
+	}
 	// A guest device with no usage has its full guest allowance.
 	if !strings.Contains(rec.Body.String(), "۱۰") && !strings.Contains(rec.Body.String(), "10.0 MB") {
 		t.Errorf("expected a 10 MB guest allowance, got:\n%s", rec.Body.String())
@@ -168,18 +171,30 @@ func TestPortalIdentifiedPersonSeesTheirDevices(t *testing.T) {
 	}); err != nil {
 		t.Fatal(err)
 	}
+	saraID, err := db.CreatePerson("sara", 1.0, "fa")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := db.UpsertUsage(period.ID, []store.UsageRow{{
+		Subject: fmt.Sprintf("person:%d", saraID), RouteID: 1, ClassID: 1, Charged: 2_500_000_000,
+	}}); err != nil {
+		t.Fatal(err)
+	}
 
 	body := do(srv.PortalHandler(), "GET", "/", "10.66.0.3:5000", nil, nil).Body.String()
 	if !strings.Contains(body, "سلام، "+person.Name) {
 		t.Errorf("portal should greet the identified person:\n%s", body)
 	}
-	for _, want := range []string{"phone", "tablet", "۱٫۵ GB"} {
+	for _, want := range []string{"phone", "tablet", "۱٫۵ GB", "افراد", "sara", "۲٫۵ GB", "شما"} {
 		if !strings.Contains(body, want) {
 			t.Errorf("portal misses %q:\n%s", want, body)
 		}
 	}
 	if strings.Index(body, "tablet") > strings.Index(body, "phone") {
 		t.Error("devices should be sorted by usage, biggest first")
+	}
+	if people := body[strings.Index(body, "افراد"):]; strings.Index(people, "sara") > strings.Index(people, "ali") {
+		t.Error("people should be sorted by usage, biggest first")
 	}
 	if strings.Contains(body, "/sub/") {
 		t.Error("subscription link should stay hidden on the portal")

@@ -116,6 +116,12 @@ type portalDevice struct {
 	Blocked bool
 }
 
+type portalPerson struct {
+	Name string
+	Used int64
+	You  bool
+}
+
 type portalPage struct {
 	Lang       string
 	Dir        string
@@ -132,6 +138,7 @@ type portalPage struct {
 	Reason     string
 	DaysLeft   int
 	Devices    []portalDevice
+	People     []portalPerson
 	PeriodEnd  string
 }
 
@@ -254,6 +261,24 @@ func (s *Server) portal(w http.ResponseWriter, r *http.Request) {
 		sort.SliceStable(page.Devices, func(i, j int) bool {
 			return page.Devices[i].Used > page.Devices[j].Used
 		})
+		// Household members only see the group's usage once their own device is
+		// bound to someone; a guest stays on their own numbers.
+		if dev.Owner != nil {
+			for _, p := range in.Persons {
+				st, ok := dec.Subjects[quota.PersonSubject(p.ID)]
+				if !ok {
+					continue
+				}
+				page.People = append(page.People, portalPerson{
+					Name: p.Name,
+					Used: st.Used,
+					You:  p.ID == *dev.Owner,
+				})
+			}
+			sort.SliceStable(page.People, func(i, j int) bool {
+				return page.People[i].Used > page.People[j].Used
+			})
+		}
 	}
 	// Whole days left, rounded up: the last partial day still counts as today.
 	if left := period.EndUTC - now.Unix(); left > 0 {
