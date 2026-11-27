@@ -115,6 +115,23 @@ func cmdServer(args []string) error {
 	defer db.Close()
 	log.Info("starting", "db", cfg.DBPath, "lan", cfg.LanCIDR, "box", cfg.BoxIP, "enforce", cfg.Enforce)
 
+	// A box set up by make install never runs seed, so give it its routes and
+	// listeners here; otherwise its subscription has nothing connectable.
+	if err := ensureBase(db); err != nil {
+		return err
+	}
+	if rs, err := db.Routes(); err == nil {
+		open := 0
+		for _, rt := range rs {
+			if rt.Enabled && rt.AllowAll {
+				open++
+			}
+		}
+		if open == 0 {
+			log.Warn("no route is enabled with allow_all; subscriptions stay empty")
+		}
+	}
+
 	nft := enforce.New(enforce.Options{
 		LanCIDR:    cfg.LanCIDR,
 		BoxIP:      cfg.BoxIP,
@@ -403,23 +420,10 @@ func cmdSeed(args []string) error {
 			}
 		}
 	}
-	routes, _ := db.Routes()
-	if len(routes) == 0 {
-		if _, err := db.SaveRoute(store.Route{
-			Name: "primary", Kind: "direct", UpstreamJSON: "{}",
-			AllowAll: true, Enabled: true,
-		}); err != nil {
-			return err
-		}
-		if _, err := db.SaveRoute(store.Route{
-			Name: "upstream", Kind: "direct", UpstreamJSON: "{}",
-			AllowAll: true, Enabled: true,
-		}); err != nil {
-			return err
-		}
-	}
-	if len(routes) == 0 {
-		routes, _ = db.Routes()
+
+	// One listener per (person, route), so the subscription works immediately.
+	if err := ensureBase(db); err != nil {
+		return err
 	}
 
 	// nimbaha on the primary route costs 0.3: the design's showcase cell.
@@ -437,21 +441,6 @@ func cmdSeed(args []string) error {
 	if primary != 0 && nimbaha != 0 {
 		if err := db.SetRate(primary, nimbaha, 0.3); err != nil {
 			return err
-		}
-	}
-
-	// One listener per (person, route), so the subscription works immediately.
-	if rs, _ := db.Routes(); len(rs) > 0 {
-		if ps, _ := db.Persons(); len(ps) > 0 {
-			for _, p := range ps {
-				for _, rt := range rs {
-					if rt.Enabled && rt.AllowAll {
-						if _, err := db.EnsureCredential(p.ID, rt.ID); err != nil {
-							return err
-						}
-					}
-				}
-			}
 		}
 	}
 
@@ -475,6 +464,46 @@ func cmdSeed(args []string) error {
 func mustPersons(db *store.DB) []store.Person {
 	ps, _ := db.Persons()
 	return ps
+}
+
+// ensureBase gives a box the two things a subscription needs: the default
+// direct routes when it has none, and one credential per (person, enabled and
+// allow_all route). make install never runs seed, so without this a fresh box
+// serves a subscription with nothing connectable and starts no VLESS listener.
+// It is idempotent; seed and server both call it.
+func ensureBase(db *store.DB) error {
+	routes, err := db.Routes()
+	if err != nil {
+		return err
+	}
+	if len(routes) == 0 {
+		for _, name := range []string{"primary", "upstream"} {
+			if _, err := db.SaveRoute(store.Route{
+				Name: name, Kind: "direct", UpstreamJSON: "{}",
+				AllowAll: true, Enabled: true,
+			}); err != nil {
+				return err
+			}
+		}
+		if routes, err = db.Routes(); err != nil {
+			return err
+		}
+	}
+	persons, err := db.Persons()
+	if err != nil {
+		return err
+	}
+	for _, p := range persons {
+		for _, rt := range routes {
+			if !rt.Enabled || !rt.AllowAll {
+				continue
+			}
+			if _, err := db.EnsureCredential(p.ID, rt.ID); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
 }
 
 // ---- probe ------------------------------------------------------------------

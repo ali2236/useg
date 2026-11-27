@@ -137,7 +137,9 @@ Then:
 1. Turn the ISP router's DHCP **off**. This is the one unavoidable step; two
    DHCP servers on one segment is how this class of setup half-works.
 2. Open `http://<box-ip>:8080/admin`, set the Jalali anchor and the pools (Period),
-   then add people and routes.
+   then add people. The service creates the two direct routes (`primary` and
+   `upstream`) and one listener per person for them on first start, so the
+   subscription works before you touch Routes.
 
 If your LAN is not a /24, edit `lan_cidr` in `/etc/useg/config.yaml` and run
 `sudo make update`.
