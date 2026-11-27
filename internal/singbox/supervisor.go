@@ -21,12 +21,18 @@ type Supervisor struct {
 	onBad func(string)
 
 	mu          sync.Mutex
-	cmd         *exec.Cmd
-	running     bool
-	stopping    bool
+	proc        *proc
 	hash        string
 	crashes     []time.Time
 	badNotified bool
+}
+
+// proc is one child process. stopped is set under Supervisor.mu before the
+// kill, so its Wait goroutine knows the exit was deliberate.
+type proc struct {
+	cmd     *exec.Cmd
+	done    chan struct{}
+	stopped bool
 }
 
 func NewSupervisor(bin, path string, build func() ([]byte, error), log *slog.Logger, onBad func(string)) *Supervisor {
@@ -36,7 +42,7 @@ func NewSupervisor(bin, path string, build func() ([]byte, error), log *slog.Log
 func (s *Supervisor) Running() bool {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	return s.running
+	return s.proc != nil
 }
 
 // Reconcile is safe to call every few seconds.
@@ -64,7 +70,7 @@ func (s *Supervisor) Reconcile() {
 		s.log.Info("sing-box config updated", "bytes", len(want))
 		s.stopLocked()
 	}
-	if !s.running {
+	if s.proc == nil {
 		if len(s.crashes) >= 3 && time.Since(s.crashes[len(s.crashes)-1]) < time.Minute {
 			if s.onBad != nil && !s.badNotified {
 				s.badNotified = true
@@ -85,16 +91,20 @@ func (s *Supervisor) startLocked() {
 		s.crashes = append(s.crashes, time.Now())
 		return
 	}
-	s.cmd = cmd
-	s.running = true
-	s.stopping = false
+	p := &proc{cmd: cmd, done: make(chan struct{})}
+	s.proc = p
 	s.badNotified = false
 	s.log.Info("sing-box started", "pid", cmd.Process.Pid, "config", s.path)
 	go func() {
 		err := cmd.Wait()
+		close(p.done)
 		s.mu.Lock()
-		s.running = false
-		if !s.stopping {
+		// Only the newest process may clear state; an old one that exits late
+		// must not make the supervisor think nothing is running.
+		if s.proc == p {
+			s.proc = nil
+		}
+		if !p.stopped {
 			s.crashes = append(s.crashes, time.Now())
 			s.log.Warn("sing-box exited", "err", err)
 		}
@@ -102,14 +112,21 @@ func (s *Supervisor) startLocked() {
 	}()
 }
 
+// stopLocked kills the child and waits for it to go away, so the next start
+// cannot race it for the listen ports.
 func (s *Supervisor) stopLocked() {
-	if s.cmd == nil || s.cmd.Process == nil || !s.running {
+	p := s.proc
+	if p == nil {
 		return
 	}
-	s.stopping = true
-	_ = s.cmd.Process.Kill()
-	s.running = false
-	s.cmd = nil
+	p.stopped = true
+	s.proc = nil
+	_ = p.cmd.Process.Kill()
+	select {
+	case <-p.done:
+	case <-time.After(3 * time.Second):
+		s.log.Warn("sing-box did not exit after kill", "pid", p.cmd.Process.Pid)
+	}
 }
 
 func (s *Supervisor) Stop() {
