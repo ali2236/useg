@@ -331,7 +331,9 @@ func (s *Server) dailyHistory(in quota.Input, personID, today int64, lang string
 		}
 	}
 	out := make([]dailyRow, 0, len(days))
-	for i, d := range days {
+	// Newest day first: that is what a person reads at a glance.
+	for i := len(days) - 1; i >= 0; i-- {
+		d := days[i]
 		label := jalali.Format(d, "short", s.loc)
 		if lang == "fa" {
 			label = persianDigits(label)

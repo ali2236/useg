@@ -60,6 +60,8 @@ func TestPortalDailyHistoryAndLimit(t *testing.T) {
 	}
 	if daily := body[strings.Index(body, `popovertarget="daily-limit-pop"`):strings.Index(body, `id="daily-limit-pop"`)]; strings.Count(daily, `<li class="dev">`) != 2 {
 		t.Errorf("daily list should hold only the two days with usage:\n%s", daily)
+	} else if strings.Index(daily, todayLabel) > strings.Index(daily, yesterdayLabel) {
+		t.Errorf("daily list should run newest day first:\n%s", daily)
 	}
 	if strings.Index(body, `popovertarget="daily-limit-pop"`) < strings.Index(body, "دستگاه‌ها") {
 		t.Error("the daily section should come after the devices section")
