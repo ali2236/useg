@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/x509"
 	"encoding/base64"
+	"encoding/json"
 	"encoding/pem"
 	"fmt"
 	"io"
@@ -140,6 +141,90 @@ func TestPortalShowsDeviceAndGuestState(t *testing.T) {
 	rec = do(h, "GET", "/", "10.66.0.99:5000", nil, nil)
 	if !strings.Contains(rec.Body.String(), "شناسایی نشد") {
 		t.Errorf("unknown device page missing notice:\n%s", rec.Body.String())
+	}
+}
+
+// A person's portal greets them by name and lists the devices on their share,
+// biggest consumer first, with the same numbers the subscription reports.
+func TestPortalIdentifiedPersonSeesTheirDevices(t *testing.T) {
+	srv, db, cfg, person := tserver(t)
+	now := time.Now()
+	period, err := db.EnsurePeriod(now, cfg.Location())
+	if err != nil {
+		t.Fatal(err)
+	}
+	phone, tablet := "aa:bb:cc:00:00:03", "aa:bb:cc:00:00:04"
+	if err := db.UpsertLease(tablet, "10.66.0.4", "tablet", now.Unix()); err != nil {
+		t.Fatal(err)
+	}
+	for _, mac := range []string{phone, tablet} {
+		if err := db.Bind(mac, person.ID, "test", now.Unix()); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := db.UpsertUsage(period.ID, []store.UsageRow{
+		{Subject: "dev:" + phone, RouteID: 1, ClassID: 1, Charged: 500_000_000},
+		{Subject: "dev:" + tablet, RouteID: 1, ClassID: 1, Charged: 1_500_000_000},
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	body := do(srv.PortalHandler(), "GET", "/", "10.66.0.3:5000", nil, nil).Body.String()
+	if !strings.Contains(body, "سلام، "+person.Name) {
+		t.Errorf("portal should greet the identified person:\n%s", body)
+	}
+	for _, want := range []string{"phone", "tablet", "۱٫۵ GB"} {
+		if !strings.Contains(body, want) {
+			t.Errorf("portal misses %q:\n%s", want, body)
+		}
+	}
+	if strings.Index(body, "tablet") > strings.Index(body, "phone") {
+		t.Error("devices should be sorted by usage, biggest first")
+	}
+	if strings.Contains(body, "/sub/") {
+		t.Error("subscription link should stay hidden on the portal")
+	}
+}
+
+// The portal must carry a valid web app manifest and every icon it promises,
+// or the phone falls back to a screenshot for the home-screen shortcut.
+func TestPortalIsInstallable(t *testing.T) {
+	srv, _, _, _ := tserver(t)
+	h := srv.PortalHandler()
+
+	rec := do(h, "GET", "/assets/manifest.json", "10.66.0.3:5000", nil, nil)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("manifest status %d", rec.Code)
+	}
+	var m struct {
+		Name     string
+		StartURL string `json:"start_url"`
+		Display  string
+		Icons    []struct {
+			Src   string
+			Sizes string
+		}
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &m); err != nil {
+		t.Fatalf("manifest is not JSON: %v", err)
+	}
+	if m.Name == "" || m.StartURL != "/" || m.Display != "standalone" {
+		t.Errorf("manifest head = %+v", m)
+	}
+	sizes := map[string]bool{}
+	for _, ic := range m.Icons {
+		sizes[ic.Sizes] = true
+		if got := do(h, "GET", ic.Src, "10.66.0.3:5000", nil, nil); got.Code != http.StatusOK {
+			t.Errorf("icon %s status %d", ic.Src, got.Code)
+		}
+	}
+	if !sizes["192x192"] || !sizes["512x512"] {
+		t.Errorf("manifest icons lack 192/512: %v", sizes)
+	}
+
+	body := do(h, "GET", "/", "10.66.0.3:5000", nil, nil).Body.String()
+	if !strings.Contains(body, `rel="manifest"`) || !strings.Contains(body, `rel="apple-touch-icon"`) {
+		t.Error("portal does not link the manifest or an apple-touch-icon")
 	}
 }
 

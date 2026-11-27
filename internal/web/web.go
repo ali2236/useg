@@ -14,6 +14,7 @@ import (
 	"net"
 	"net/http"
 	"net/url"
+	"sort"
 	"strconv"
 	"strings"
 	"sync"
@@ -108,13 +109,19 @@ func (s *Server) withPending(in *quota.Input) {
 
 // ---- portal -----------------------------------------------------------------
 
+type portalDevice struct {
+	Name    string
+	Used    int64
+	Current bool
+	Blocked bool
+}
+
 type portalPage struct {
-	Lang, Dir  string
+	Lang       string
+	Dir        string
 	Known      bool
 	DeviceName string
-	MAC        string
 	PersonName string
-	Guest      bool
 	Used       int64
 	Cap        int64
 	Remaining  int64
@@ -123,7 +130,8 @@ type portalPage struct {
 	Over       bool
 	Blocked    bool
 	Reason     string
-	SubURL     string
+	DaysLeft   int
+	Devices    []portalDevice
 	PeriodEnd  string
 }
 
@@ -201,17 +209,12 @@ func (s *Server) portal(w http.ResponseWriter, r *http.Request) {
 		s.withPending(&in)
 		dec := quota.Compute(in)
 		page.Known = true
-		page.MAC = dev.MAC
 		page.DeviceName = deviceLabel(dev)
-		page.Guest = dev.Owner == nil
 		subj := quota.DeviceSubject(dev.MAC)
 		if dev.Owner != nil {
 			subj = quota.PersonSubject(*dev.Owner)
 			if p, perr := s.db.Person(*dev.Owner); perr == nil {
 				page.PersonName = p.Name
-				if p.Enabled {
-					page.SubURL = s.subURL(r, p)
-				}
 			}
 		}
 		if st, ok := dec.Subjects[subj]; ok {
@@ -231,6 +234,30 @@ func (s *Server) portal(w http.ResponseWriter, r *http.Request) {
 			page.Blocked = true
 			page.Reason = reasonText(l.code, reason)
 		}
+		// A person sees every device on their share; a guest sees only the one
+		// they are on. Usage comes from the same gathered totals as the quota.
+		for _, d := range in.Devices {
+			if dev.Owner != nil {
+				if d.Owner == nil || *d.Owner != *dev.Owner {
+					continue
+				}
+			} else if d.MAC != dev.MAC {
+				continue
+			}
+			page.Devices = append(page.Devices, portalDevice{
+				Name:    deviceLabel(d),
+				Used:    int64(in.Totals[quota.DeviceSubject(d.MAC)].Charged),
+				Current: d.MAC == dev.MAC,
+				Blocked: dec.Blocked[d.MAC] != "",
+			})
+		}
+		sort.SliceStable(page.Devices, func(i, j int) bool {
+			return page.Devices[i].Used > page.Devices[j].Used
+		})
+	}
+	// Whole days left, rounded up: the last partial day still counts as today.
+	if left := period.EndUTC - now.Unix(); left > 0 {
+		page.DaysLeft = int((left + 86399) / 86400)
 	}
 	s.render(w, "portal.gohtml", page)
 }
